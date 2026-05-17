@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quarks & Quants</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg: #06111f;
+      --panel: rgba(12, 24, 42, 0.72);
+      --border: rgba(255,255,255,0.08);
+      --text: #f5f7fa;
+      --muted: #91a0b8;
+      --accent: #7ab8ff;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+      position: relative;
+      min-height: 100vh;
+    }
+
+    .blob {
+      position: fixed;
+      width: 700px;
+      height: 700px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(43,94,255,0.28), transparent 70%);
+      filter: blur(40px);
+      z-index: -1;
+      opacity: 0.9;
+    }
+
+    .blob-one {
+      top: -220px;
+      left: -150px;
+    }
+
+    .blob-two {
+      bottom: -250px;
+      right: -150px;
+      background: radial-gradient(circle, rgba(0,147,255,0.18), transparent 70%);
+    }
+
+    header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      padding: 24px 72px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(4, 10, 20, 0.35);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      z-index: 1000;
+    }
+
+    .logo {
+      font-size: 1.2rem;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+    }
+
+    .logo span {
+      color: var(--accent);
+    }
+
+    nav a {
+      text-decoration: none;
+      color: rgba(255,255,255,0.7);
+      margin-left: 28px;
+      font-size: 0.92rem;
+      transition: 0.3s ease;
+    }
+
+    nav a:hover {
+      color: white;
+    }
+
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 140px 24px 80px;
+    }
+
+    .hero h1 {
+      font-size: 4.3rem;
+      line-height: 1;
+      letter-spacing: -4px;
+      margin-bottom: 28px;
+      max-width: 1000px;
+      font-weight: 700;
+    }
+
+    .hero p {
+      max-width: 760px;
+      color: var(--muted);
+      line-height: 1.9;
+      font-size: 0.96rem;
+      margin-bottom: 42px;
+    }
+
+    .btn {
+      padding: 14px 28px;
+      border-radius: 999px;
+      text-decoration: none;
+      color: white;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.08);
+      backdrop-filter: blur(12px);
+      transition: 0.3s ease;
+      font-size: 0.95rem;
+    }
+
+    .btn:hover {
+      background: rgba(255,255,255,0.14);
+      transform: translateY(-2px);
+    }
+
+    section {
+      padding: 120px 80px;
+    }
+
+    .section-title {
+      text-align: center;
+      margin-bottom: 70px;
+    }
+
+    .section-title h2 {
+      font-size: 3rem;
+      letter-spacing: -2px;
+      margin-bottom: 18px;
+    }
+
+    .section-title p {
+      color: var(--muted);
+      max-width: 700px;
+      margin: auto;
+      line-height: 1.9;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 28px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 32px;
+      padding: 42px;
+      backdrop-filter: blur(20px);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.22);
+      transition: 0.35s ease;
+    }
+
+    .panel:hover {
+      transform: translateY(-4px);
+      border-color: rgba(122,184,255,0.18);
+    }
+
+    .panel-tag {
+      color: var(--accent);
+      font-size: 0.82rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+
+    .panel h3 {
+      font-size: 2rem;
+      letter-spacing: -2px;
+      margin-bottom: 18px;
+    }
+
+    .panel p {
+      color: var(--muted);
+      line-height: 1.9;
+      margin-bottom: 24px;
+    }
+
+    .feature-list {
+      display: grid;
+      gap: 14px;
+    }
+
+    .feature-item {
+      padding: 18px 22px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.04);
+      transition: 0.3s ease;
+    }
+
+    .feature-item:hover {
+      background: rgba(255,255,255,0.05);
+    }
+
+    .feature-item h4 {
+      font-size: 1rem;
+      margin-bottom: 7px;
+      font-weight: 500;
+    }
+
+    .feature-item p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.7;
+    }
+
+    footer {
+      padding: 40px 20px 70px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    @media(max-width: 768px) {
+      header {
+        padding: 22px 24px;
+      }
+
+      nav {
+        display: none;
+      }
+
+      .hero h1 {
+        font-size: 3.2rem;
+      }
+
+      section {
+        padding: 90px 24px;
+      }
+
+      .panel {
+        padding: 30px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="blob blob-one"></div>
+<div class="blob blob-two"></div>
+
+<header>
+  <div class="logo">Quarks <span>&</span> Quants</div>
+
+  <nav>
+    <a href="#overview">Overview</a>
+    <a href="#quarks">Quarks</a>
+    <a href="#quants">Quants</a>
+  </nav>
+</header>
+
+<section class="hero" id="overview">
+  <h1>Quarks & Quants</h1>
+
+  <p>
+    Fundamental intelligence and quantitative systems for modern equity analysis.
+  </p>
+</section>
+
+<section>
+  <div class="section-title">
+    <h2>Two Engines. One Framework.</h2>
+
+    <p>
+      Quarks focuses on business fundamentals and intrinsic value.
+      Quants focuses on mathematical systems, statistical behavior, and algorithmic research.
+    </p>
+  </div>
+
+  <div class="split-layout">
+
+    <div class="panel" id="quarks">
+      <div class="panel-tag">Fundamental Analysis</div>
+
+      <h3>Quarks</h3>
+
+      
+
+      <div class="feature-list">
+
+        <div class="feature-item">
+          <h4>Financial Sheet Analysis</h4>
+        </div>
+
+        <div class="feature-item">
+          <h4>Valuation</h4>
+        </div>
+
+        <div class="feature-item">
+          <h4>Business Quality Assessment</h4>
+          <p>Moat analysis, management evaluation, capital allocation, and governance study.</p>
+        </div>
+
+        <div class="feature-item">
+          <h4>Sector & Industry Research</h4>
+          <p>Industry structure, growth drivers, cyclicality, and competitive landscape mapping.</p>
+        </div>
+
+        
+
+        
+
+      </div>
+    </div>
+
+    <div class="panel" id="quants">
+      <div class="panel-tag">Quantitative Systems</div>
+
+      <h3>Quants</h3>
+
+      
+
+      <div class="feature-list">
+
+        <div class="feature-item">
+          <h4>Cross Section Analysis</h4>
+        </div>
+
+        <div class="feature-item">
+          <h4>Backtesting</h4>
+        </div>
+
+        <div class="feature-item">
+          <h4>SMA Study</h4>
+          <p>Trend-following crossover systems and moving average signal behavior analysis.</p>
+        </div>
+
+        <div class="feature-item">
+          <h4>RSI Study</h4>
+          <p>Momentum reversal systems, overbought-oversold behavior, and signal efficiency analysis.</p>
+        </div>
+
+        <div class="feature-item">
+          <h4>MACD Systems</h4>
+          <p>Momentum convergence-divergence frameworks with optimization and parameter studies.</p>
+        </div>
+
+        
+        </div>
+
+        <div class="feature-item">
+          <h4>Optimization</h4>
+          <p>Parameter optimization, walk-forward testing, and robustness analysis.</p>
+        </div>
+
+        <div class="feature-item">
+          <h4>Stress Testing</h4>
+          <p>Evaluate strategy survivability during crashes, volatility spikes, and extreme conditions.</p>
+        </div>
+
+        <div class="feature-item">
+          <h4>Risk Analytics</h4>
+          <p>Drawdown analysis, Sharpe ratio, volatility measurement, VaR, and exposure tracking.</p>
+        </div>
+
+        
+
+        
+
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<footer>
+  © 2026 Quarks & Quants — Equity Intelligence Platform
+</footer>
+
+</body>
+</html>
