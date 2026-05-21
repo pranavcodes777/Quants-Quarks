@@ -293,301 +293,6 @@ body::before{
 
     font-weight:300;
 
-    letter-spacing:-.03em;<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-<title>Quarks & Quants</title>
-
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@300;400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-
-<style>
-
-*{
-    margin:0;
-    padding:0;
-    box-sizing:border-box;
-}
-
-:root{
-
-    --bg:#071018;
-    --surface:rgba(20,34,46,.58);
-
-    --text:#E8EEF2;
-    --muted:#7F98A5;
-
-    --line:rgba(255,255,255,.08);
-
-    --accent:#7FD0E7;
-
-    --hover:rgba(127,208,231,.08);
-
-    --blur:blur(22px);
-
-}
-
-html{
-    scroll-behavior:smooth;
-}
-
-body{
-
-    font-family:'Inter',sans-serif;
-    background:
-    radial-gradient(circle at top left, rgba(70,140,180,.18), transparent 32%),
-    radial-gradient(circle at bottom right, rgba(50,100,150,.16), transparent 30%),
-    #071018;
-
-    color:var(--text);
-
-    min-height:100vh;
-
-    overflow-x:hidden;
-}
-
-/* background blob */
-
-body::before{
-
-    content:"";
-
-    position:fixed;
-
-    width:700px;
-    height:700px;
-
-    background:rgba(73,152,194,.10);
-
-    filter:blur(120px);
-
-    top:-200px;
-    right:-120px;
-
-    z-index:-1;
-}
-
-/* NAVBAR */
-
-.nav{
-
-    width:100%;
-
-    height:62px;
-
-    display:flex;
-
-    align-items:center;
-
-    justify-content:space-between;
-
-    padding:0 42px;
-
-    border-bottom:1px solid var(--line);
-
-    backdrop-filter:blur(12px);
-
-    position:sticky;
-
-    top:0;
-
-    z-index:100;
-}
-
-.logo{
-
-    font-size:.82rem;
-
-    letter-spacing:.22em;
-
-    text-transform:uppercase;
-
-    color:var(--muted);
-
-    font-weight:600;
-}
-
-.nav-right{
-
-    display:flex;
-
-    align-items:center;
-
-    gap:14px;
-}
-
-.nav-btn{
-
-    padding:8px 14px;
-
-    border-radius:999px;
-
-    border:1px solid var(--line);
-
-    background:transparent;
-
-    color:var(--muted);
-
-    font-size:.72rem;
-
-    letter-spacing:.05em;
-
-    cursor:pointer;
-
-    transition:.2s ease;
-}
-
-.nav-btn:hover{
-
-    color:var(--text);
-
-    border-color:rgba(255,255,255,.16);
-
-    background:rgba(255,255,255,.03);
-}
-
-/* HERO */
-
-.hero{
-
-    width:100%;
-
-    padding-top:110px;
-
-    text-align:center;
-}
-
-.hero h1{
-
-    font-family:'Fraunces',serif;
-
-    font-weight:300;
-
-    font-size:clamp(3rem,8vw,6rem);
-
-    letter-spacing:-.05em;
-
-    line-height:.92;
-}
-
-.hero h1 em{
-
-    font-style:italic;
-
-    color:#6F93A5;
-}
-
-.hero-sub{
-
-    margin-top:18px;
-
-    color:var(--muted);
-
-    font-size:.82rem;
-
-    letter-spacing:.16em;
-
-    text-transform:uppercase;
-}
-
-.hero-line{
-
-    width:40px;
-    height:1px;
-
-    background:rgba(255,255,255,.16);
-
-    margin:34px auto 0 auto;
-}
-
-/* MAIN GRID */
-
-.grid{
-
-    width:min(1100px,92%);
-
-    margin:90px auto 80px auto;
-
-    display:grid;
-
-    grid-template-columns:1fr 1fr;
-
-    gap:28px;
-}
-
-/* PANEL */
-
-.panel{
-
-    background:var(--surface);
-
-    border:1px solid var(--line);
-
-    border-radius:28px;
-
-    padding:28px;
-
-    backdrop-filter:var(--blur);
-
-    position:relative;
-
-    overflow:hidden;
-
-    transition:.35s ease;
-}
-
-.panel:hover{
-
-    transform:translateY(-4px);
-
-    border-color:rgba(127,208,231,.18);
-}
-
-.panel::before{
-
-    content:"";
-
-    position:absolute;
-
-    width:240px;
-    height:240px;
-
-    border-radius:50%;
-
-    background:rgba(127,208,231,.05);
-
-    top:-100px;
-    right:-100px;
-
-    filter:blur(30px);
-}
-
-/* PANEL HEADER */
-
-.panel-top{
-
-    display:flex;
-
-    justify-content:space-between;
-
-    align-items:flex-start;
-
-    margin-bottom:26px;
-}
-
-.panel-title{
-
-    font-family:'Fraunces',serif;
-
-    font-size:2rem;
-
-    font-weight:300;
-
     letter-spacing:-.03em;
 }
 
@@ -735,6 +440,13 @@ body::before{
     }
 }
 
+/* LINK FIX */
+
+a{
+    text-decoration:none;
+    color:inherit;
+}
+
 </style>
 </head>
 
@@ -805,23 +517,63 @@ body::before{
         </div>
 
         <div class="item">
-
             <div class="item-left">
-
                 <div class="item-title">
                     Financial Statement Analysis
                 </div>
-
                 <div class="item-sub">
                     Income · Balance Sheet · Cash Flow
                 </div>
-
             </div>
+            <div class="arrow">→</div>
+        </div>
 
-            <div class="arrow">
-                →
+        <div class="item">
+            <div class="item-left">
+                <div class="item-title">
+                    Valuation
+                </div>
+                <div class="item-sub">
+                    DCF · Relative · Multiples
+                </div>
             </div>
+            <div class="arrow">→</div>
+        </div>
 
+        <div class="item">
+            <div class="item-left">
+                <div class="item-title">
+                    Earnings Analysis
+                </div>
+                <div class="item-sub">
+                    Revenue · Margins · Guidance
+                </div>
+            </div>
+            <div class="arrow">→</div>
+        </div>
+
+        <div class="item">
+            <div class="item-left">
+                <div class="item-title">
+                    Business Quality
+                </div>
+                <div class="item-sub">
+                    Moat · ROCE · Efficiency
+                </div>
+            </div>
+            <div class="arrow">→</div>
+        </div>
+
+        <div class="item">
+            <div class="item-left">
+                <div class="item-title">
+                    Management Analysis
+                </div>
+                <div class="item-sub">
+                    Capital Allocation · Governance
+                </div>
+            </div>
+            <div class="arrow">→</div>
         </div>
 
     </div>
@@ -850,13 +602,9 @@ body::before{
             Quantitative Research
         </div>
 
-        <!-- CLICKABLE STREAMLIT CARD -->
+        <!-- CLICKABLE STREAMLIT APP -->
 
-        <a 
-            href="https://1-equity-board-na8x9sorbbbizat8bbpv3b.streamlit.app/" 
-            target="_blank" 
-            style="text-decoration:none; color:inherit;"
-        >
+        <a href="https://1-equity-board-na8x9sorbbbizat8bbpv3b.streamlit.app/" target="_blank">
 
             <div class="item">
 
@@ -879,397 +627,6 @@ body::before{
             </div>
 
         </a>
-
-        <div class="item">
-
-            <div class="item-left">
-
-                <div class="item-title">
-                    Backtesting
-                </div>
-
-                <div class="item-sub">
-                    Historical Strategy Validation
-                </div>
-
-            </div>
-
-            <div class="arrow">
-                →
-            </div>
-
-        </div>
-
-    </div>
-
-</section>
-
-<div class="footer">
-    QUARKS & QUANTS · EQUITY RESEARCH TERMINAL
-</div>
-
-</body>
-</html>
-}
-
-.panel-tag{
-
-    font-size:.62rem;
-
-    letter-spacing:.18em;
-
-    text-transform:uppercase;
-
-    color:var(--muted);
-}
-
-/* LIST */
-
-.section-label{
-
-    font-size:.60rem;
-
-    letter-spacing:.20em;
-
-    text-transform:uppercase;
-
-    color:#607B89;
-
-    margin:22px 0 12px 4px;
-}
-
-.item{
-
-    width:100%;
-
-    padding:16px 18px;
-
-    border-radius:18px;
-
-    border:1px solid rgba(255,255,255,.04);
-
-    background:rgba(255,255,255,.015);
-
-    margin-bottom:12px;
-
-    display:flex;
-
-    align-items:center;
-
-    justify-content:space-between;
-
-    cursor:pointer;
-
-    transition:.22s ease;
-}
-
-.item:hover{
-
-    background:var(--hover);
-
-    border-color:rgba(127,208,231,.14);
-
-    transform:translateX(4px);
-}
-
-.item-left{
-
-    display:flex;
-
-    flex-direction:column;
-
-    gap:5px;
-}
-
-.item-title{
-
-    font-size:.92rem;
-
-    font-weight:500;
-
-    letter-spacing:-.01em;
-}
-
-.item-sub{
-
-    font-size:.66rem;
-
-    text-transform:uppercase;
-
-    letter-spacing:.12em;
-
-    color:var(--muted);
-}
-
-.arrow{
-
-    color:#7297AA;
-
-    font-size:.9rem;
-
-    transition:.2s ease;
-}
-
-.item:hover .arrow{
-
-    transform:translateX(3px);
-
-    color:var(--accent);
-}
-
-/* FOOTER */
-
-.footer{
-
-    width:100%;
-
-    text-align:center;
-
-    padding-bottom:40px;
-
-    color:#607B89;
-
-    font-size:.72rem;
-
-    letter-spacing:.10em;
-
-    text-transform:uppercase;
-}
-
-/* RESPONSIVE */
-
-@media(max-width:900px){
-
-    .grid{
-
-        grid-template-columns:1fr;
-    }
-
-    .hero{
-
-        padding-top:80px;
-    }
-
-    .panel{
-
-        padding:24px;
-    }
-}
-
-</style>
-</head>
-
-<body>
-
-<!-- NAV -->
-
-<nav class="nav">
-
-    <div class="logo">
-        QUARKS & QUANTS
-    </div>
-
-    <div class="nav-right">
-
-        <button class="nav-btn">
-            Research Terminal
-        </button>
-
-        <button class="nav-btn">
-            Equity Intelligence
-        </button>
-
-    </div>
-
-</nav>
-
-<!-- HERO -->
-
-<section class="hero">
-
-    <h1>
-        Quarks <em>&</em> Quants
-    </h1>
-
-    <div class="hero-sub">
-        Institutional Equity Intelligence
-    </div>
-
-    <div class="hero-line"></div>
-
-</section>
-
-<!-- GRID -->
-
-<section class="grid">
-
-    <!-- QUARKS -->
-
-    <div class="panel">
-
-        <div class="panel-top">
-
-            <div>
-                <div class="panel-title">
-                    Quarks
-                </div>
-            </div>
-
-            <div class="panel-tag">
-                Fundamentals
-            </div>
-
-        </div>
-
-        <div class="section-label">
-            Fundamental Research
-        </div>
-
-        <div class="item">
-
-            <div class="item-left">
-
-                <div class="item-title">
-                    Financial Statement Analysis
-                </div>
-
-                <div class="item-sub">
-                    Income · Balance Sheet · Cash Flow
-                </div>
-
-            </div>
-
-            <div class="arrow">
-                →
-            </div>
-
-        </div>
-
-        <div class="item">
-
-            <div class="item-left">
-
-                <div class="item-title">
-                    Valuation
-                </div>
-
-                <div class="item-sub">
-                    DCF · Relative · Multiples
-                </div>
-
-            </div>
-
-            <div class="arrow">
-                →
-            </div>
-
-        </div>
-
-        <div class="item">
-
-            <div class="item-left">
-
-                <div class="item-title">
-                    Earnings Analysis
-                </div>
-
-                <div class="item-sub">
-                    Revenue · Margins · Guidance
-                </div>
-
-            </div>
-
-            <div class="arrow">
-                →
-            </div>
-
-        </div>
-
-        <div class="item">
-
-            <div class="item-left">
-
-                <div class="item-title">
-                    Business Quality
-                </div>
-
-                <div class="item-sub">
-                    Moat · ROCE · Efficiency
-                </div>
-
-            </div>
-
-            <div class="arrow">
-                →
-            </div>
-
-        </div>
-
-        <div class="item">
-
-            <div class="item-left">
-
-                <div class="item-title">
-                    Management Analysis
-                </div>
-
-                <div class="item-sub">
-                    Capital Allocation · Governance
-                </div>
-
-            </div>
-
-            <div class="arrow">
-                →
-            </div>
-
-        </div>
-
-    </div>
-
-    <!-- QUANTS -->
-
-    <div class="panel">
-
-        <div class="panel-top">
-
-            <div>
-
-                <div class="panel-title">
-                    Quants
-                </div>
-
-            </div>
-
-            <div class="panel-tag">
-                Non-Fundamentals
-            </div>
-
-        </div>
-
-        <div class="section-label">
-            Quantitative Research
-        </div>
-
-        <div class="item">
-
-            <div class="item-left">
-
-                <div class="item-title">
-                    Cross Section Analysis
-                </div>
-
-                <div class="item-sub">
-                    Relative Strength · Ranking
-                </div>
-
-            </div>
-
-            <div class="arrow">
-                →
-            </div>
-
-        </div>
 
         <div class="item">
 
