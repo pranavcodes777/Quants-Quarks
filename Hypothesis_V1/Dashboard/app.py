@@ -108,7 +108,7 @@ GROUP_COLORS = {
 
 
 # ── Data loading ───────────────────────────────────────────────────────────────
-@st.cache_data(show_spinner="Loading data…")
+@st.cache_data(show_spinner="Loading data…", ttl=3600)
 def _load_all() -> pd.DataFrame:
     return pd.read_parquet(_DB_PATH)
 
