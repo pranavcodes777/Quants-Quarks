@@ -1,6 +1,6 @@
 """
-Hypothesis V1 — Balance Sheet Factor Research
-Phase 1: Factor Correlation Analysis
+Hypothesis V1 — Factor Analysis
+Phase 1: Factor Correlation
 """
 
 import os
@@ -206,7 +206,6 @@ def find_redundant_groups(corr: pd.DataFrame, threshold: float) -> dict[str, lis
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## ◈ Hypothesis V1")
-    st.caption("Balance Sheet · Phase 1 · Factor Research")
     st.divider()
 
     sector = st.selectbox("Sector", list(SECTORS.keys()))
@@ -243,7 +242,7 @@ avail = [f for f in FACTOR_COLS if f in df.columns and df[f].notna().sum() > 5]
 
 
 # ── Header ─────────────────────────────────────────────────────────────────────
-st.markdown(f"## Balance Sheet Factor Analysis &nbsp;·&nbsp; {sector}", unsafe_allow_html=True)
+st.markdown(f"## Factor Analysis · {sector}", unsafe_allow_html=True)
 
 n_co  = df["Company"].nunique()
 n_yr  = df["year"].nunique()
@@ -268,8 +267,18 @@ tab1, tab2, tab3 = st.tabs(["  Correlation Matrix  ", "  Factor Explorer  ", "  
 # TAB 1 — Correlation Matrix
 # ══════════════════════════════════════════════════════════════════════════════
 with tab1:
-    corr   = compute_corr(df[avail], method)
-    pval   = corr_pvalues(df[avail])
+    # ── Group filter ──────────────────────────────────────────────────────────
+    all_groups = list(dict.fromkeys(FACTOR_META[f]["group"] for f in avail if f in FACTOR_META))
+    sel_groups_hm = st.multiselect(
+        "Factor Groups", all_groups, default=all_groups, key="hm_groups",
+        help="Select which factor groups to include in the correlation matrix"
+    )
+    hm_factors = [f for f in avail if FACTOR_META.get(f, {}).get("group") in sel_groups_hm]
+    if len(hm_factors) < 2:
+        st.info("Select at least 2 factor groups.")
+        st.stop()
+    corr   = compute_corr(df[hm_factors], method)
+    pval   = corr_pvalues(df[hm_factors])
     order  = cluster_order(corr)
     corr_o = corr.loc[order, order]
     pval_o = pval.loc[order, order]
@@ -465,16 +474,24 @@ with tab3:
     with col_cb:
         snap_yr = st.selectbox("Year", sorted(df["year"].unique(), reverse=True), key="snap_yr")
 
+    # ── Factor group filter ───────────────────────────────────────────────────
+    all_groups_snap = list(dict.fromkeys(FACTOR_META[f]["group"] for f in avail if f in FACTOR_META))
+    sel_groups_snap = st.multiselect(
+        "Factor Groups", all_groups_snap, default=all_groups_snap, key="snap_groups",
+        help="Filter which factor groups to display"
+    )
+    snap_avail = [f for f in avail if FACTOR_META.get(f, {}).get("group") in sel_groups_snap]
+
     snap_row = df[(df["Company"] == snap_co) & (df["year"] == snap_yr)]
     if snap_row.empty:
         st.warning(f"No data for {snap_co} in {snap_yr}.")
         st.stop()
 
-    snap_vals = snap_row[avail].iloc[0]
+    snap_vals = snap_row[snap_avail].iloc[0]
     peer_df   = df[df["year"] == snap_yr][avail]
 
     pct_ranks = {}
-    for f in avail:
+    for f in snap_avail:
         valid = peer_df[f].dropna()
         if len(valid) > 1 and pd.notna(snap_vals[f]):
             pct_ranks[f] = stats.percentileofscore(valid, snap_vals[f], kind="rank")
@@ -522,7 +539,7 @@ with tab3:
 
     # Multi-year trend for this company
     st.markdown('<div class="section-hd">All Factors — Historical</div>', unsafe_allow_html=True)
-    hist = df[df["Company"] == snap_co][["year"] + avail].set_index("year").T
+    hist = df[df["Company"] == snap_co][["year"] + snap_avail].set_index("year").T
     hist.index = [FACTOR_META[f]["label"] for f in hist.index]
     hist = hist.round(3)
     st.dataframe(hist, use_container_width=True)
