@@ -118,7 +118,7 @@ def corr_pvalues(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def cluster_order(corr: pd.DataFrame) -> list[str]:
-    dist = (1 - corr.abs()).clip(0, 1).values
+    dist = (1 - corr.abs()).clip(0, 1).to_numpy(copy=True)
     np.fill_diagonal(dist, 0)
     try:
         Z     = linkage(squareform(dist), method="average")
