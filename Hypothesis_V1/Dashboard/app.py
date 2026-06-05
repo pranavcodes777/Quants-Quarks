@@ -405,7 +405,7 @@ with tab2:
         legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=10)),
         xaxis=dict(showgrid=False, tickformat="d"),
         yaxis=dict(showgrid=True, gridcolor="#21262d"),
-        hovermode="x unified",
+        hovermode="closest",
     )
     st.plotly_chart(fig_line, use_container_width=True)
 
