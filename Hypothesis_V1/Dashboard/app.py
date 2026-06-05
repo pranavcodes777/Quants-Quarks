@@ -94,6 +94,24 @@ FACTOR_META: dict[str, dict] = {
     # Cash quality
     "CFO_to_NetProfit":  {"label": "CFO / Net Profit",    "group": "Cash Quality",  "desc": "Cash from Operations / Net Profit. >1 = profits backed by real cash. The single best earnings quality test."},
     "FCF_Margin":        {"label": "FCF Margin %",        "group": "Cash Quality",  "desc": "Free Cash Flow / Sales. True economic profitability after all capex. What the business actually generates."},
+    # Profitability (additional)
+    "EBITDA_Margin":          {"label": "EBITDA Margin %",        "group": "Profitability", "desc": "(Operating Profit + Depreciation) / Sales. Profitability before interest, tax, and accounting charges."},
+    # Efficiency
+    "Asset_Turnover":         {"label": "Asset Turnover",         "group": "Efficiency",    "desc": "Sales / Total Assets. How productively the company uses its asset base to generate revenue."},
+    "FixedAsset_Turnover":    {"label": "Fixed Asset Turnover",   "group": "Efficiency",    "desc": "Sales / Fixed Assets. Revenue generated per rupee of fixed asset. Higher = sweating assets harder."},
+    # Growth (additional)
+    "OpProfit_Growth":        {"label": "Op. Profit Growth %",    "group": "Growth",        "desc": "Year-on-year operating profit growth."},
+    "EBITDA_Growth":          {"label": "EBITDA Growth %",        "group": "Growth",        "desc": "Year-on-year EBITDA growth."},
+    # Capex
+    "Capex_to_Sales":         {"label": "Capex / Sales %",        "group": "Capex",         "desc": "Capital expenditure as % of sales. Higher = capital-intensive; reinvesting heavily."},
+    "Capex_to_Depreciation":  {"label": "Capex / Depreciation",   "group": "Capex",         "desc": ">1 = growing asset base (growth capex). <1 = just maintaining assets (maintenance capex)."},
+    # Working capital efficiency
+    "Debtor_Days":            {"label": "Debtor Days",            "group": "Efficiency",    "desc": "Days to collect from customers. Lower = faster cash collection."},
+    "Inventory_Days":         {"label": "Inventory Days",         "group": "Efficiency",    "desc": "Days inventory sits before being sold. Lower = leaner operations."},
+    "Days_Payable":           {"label": "Days Payable",           "group": "Efficiency",    "desc": "Days taken to pay suppliers. Higher = company has more supplier financing."},
+    "Cash_Conversion_Cycle":  {"label": "Cash Conversion Cycle",  "group": "Efficiency",    "desc": "Debtor Days + Inventory Days - Days Payable. Negative = suppliers fund the business. HUL runs deeply negative."},
+    "Working_Capital_Days":   {"label": "Working Capital Days",   "group": "Efficiency",    "desc": "Days of sales tied up in net working capital."},
+    "ROCE":                   {"label": "ROCE %",                 "group": "Profitability", "desc": "Return on Capital Employed. Measures returns on both debt and equity capital together."},
 }
 
 FACTOR_COLS  = list(FACTOR_META.keys())
@@ -104,6 +122,8 @@ GROUP_COLORS = {
     "Growth":       "#3fb950",
     "Cash Quality": "#79c0ff",
     "Size":         "#d2a8ff",
+    "Efficiency":   "#a5d6ff",
+    "Capex":        "#ffa657",
 }
 
 

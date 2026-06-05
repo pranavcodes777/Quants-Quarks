@@ -100,6 +100,10 @@ def load_cf(ticker: str) -> pd.DataFrame | None:
     return _load_statement(ticker, "cash_flow.parquet")
 
 
+def load_ratios(ticker: str) -> pd.DataFrame | None:
+    return _load_statement(ticker, "ratios.parquet")
+
+
 # ── Factor derivation ──────────────────────────────────────────────────────────
 
 def derive_bs_factors(bs: pd.DataFrame) -> pd.DataFrame:
@@ -133,27 +137,62 @@ def derive_pl_cf_factors(pl: pd.DataFrame, cf: pd.DataFrame,
     f     = pd.DataFrame(index=pl.index)
     sales = _col(pl, "Sales").replace(0, np.nan)
     op    = _col(pl, "Operating Profit")
+    depr  = _col(pl, "Depreciation")
     np_   = _col(pl, "Net Profit")
     intr  = _col(pl, "Interest").replace(0, np.nan)
     cfo   = _col(cf, "Cash from Operating Activity")
     fcf   = _col(cf, "Free Cash Flow")
     eq    = (_col(bs, "Equity Capital") + _col(bs, "Reserves")).replace(0, np.nan)
     ta    = _col(bs, "Total Assets").replace(0, np.nan)
+    fa    = _col(bs, "Fixed Assets").replace(0, np.nan)
+    ebitda = op + depr
 
     # Profitability
-    f["Operating_Margin"]  = op  / sales * 100
-    f["Net_Margin"]        = np_ / sales * 100
-    f["ROE"]               = np_ / eq    * 100
-    f["ROA"]               = np_ / ta    * 100
-    f["Interest_Coverage"] = op  / intr          # NaN when no debt — intentional
+    f["Operating_Margin"]  = op     / sales * 100
+    f["EBITDA_Margin"]     = ebitda / sales * 100
+    f["Net_Margin"]        = np_    / sales * 100
+    f["ROE"]               = np_    / eq    * 100
+    f["ROA"]               = np_    / ta    * 100
+    f["Interest_Coverage"] = op     / intr
+
+    # Efficiency / Turnover
+    f["Asset_Turnover"]       = sales / ta
+    f["FixedAsset_Turnover"]  = sales / fa
 
     # Growth
-    f["Revenue_Growth"]    = sales.pct_change() * 100
-    f["NetProfit_Growth"]  = np_.pct_change()   * 100
+    f["Revenue_Growth"]       = sales.pct_change()  * 100
+    f["OpProfit_Growth"]      = op.pct_change()     * 100
+    f["EBITDA_Growth"]        = ebitda.pct_change() * 100
+    f["NetProfit_Growth"]     = np_.pct_change()    * 100
 
     # Cash quality
-    f["CFO_to_NetProfit"]  = cfo / np_.replace(0, np.nan)
-    f["FCF_Margin"]        = fcf / sales * 100
+    f["CFO_to_NetProfit"]     = cfo / np_.replace(0, np.nan)
+    f["FCF_Margin"]           = fcf / sales * 100
+
+    # Capex
+    capex = (cfo - fcf).abs()                        # Capex = CFO - FCF
+    f["Capex_to_Sales"]       = capex / sales * 100
+    f["Capex_to_Depreciation"]= capex / depr.replace(0, np.nan)
+
+    return f
+
+
+def derive_ratio_factors(ratios: pd.DataFrame) -> pd.DataFrame:
+    f = pd.DataFrame(index=ratios.index)
+
+    def _pct_col(name: str) -> pd.Series:
+        s = _col(ratios, name)
+        if s.dtype == object:
+            s = s.astype(str).str.replace("%", "").str.strip()
+            s = pd.to_numeric(s, errors="coerce")
+        return s
+
+    f["Debtor_Days"]          = pd.to_numeric(_col(ratios, "Debtor Days"),    errors="coerce")
+    f["Inventory_Days"]       = pd.to_numeric(_col(ratios, "Inventory Days"), errors="coerce")
+    f["Days_Payable"]         = pd.to_numeric(_col(ratios, "Days Payable"),   errors="coerce")
+    f["Cash_Conversion_Cycle"]= pd.to_numeric(_col(ratios, "Cash Conversion Cycle"), errors="coerce")
+    f["Working_Capital_Days"] = pd.to_numeric(_col(ratios, "Working Capital Days"),  errors="coerce")
+    f["ROCE"]                 = _pct_col("ROCE %")
 
     return f
 
@@ -170,22 +209,29 @@ def build_sector_factors(sectors: list[str] | None = None) -> pd.DataFrame:
             if bs is None:
                 continue
 
-            pl = load_pl(ticker)
-            cf = load_cf(ticker)
+            pl     = load_pl(ticker)
+            cf     = load_cf(ticker)
+            ratios = load_ratios(ticker)
 
-            bs_f = derive_bs_factors(bs)
+            bs_f   = derive_bs_factors(bs)
+            common = bs.index
 
             if pl is not None and cf is not None:
-                common = bs.index.intersection(pl.index).intersection(cf.index)
-                if len(common) >= MIN_MARCH_YEARS:
-                    plcf_f = derive_pl_cf_factors(
-                        pl.loc[common], cf.loc[common], bs.loc[common]
-                    )
-                    row = pd.concat([bs_f.loc[common], plcf_f], axis=1)
+                c3 = bs.index.intersection(pl.index).intersection(cf.index)
+                if len(c3) >= MIN_MARCH_YEARS:
+                    plcf_f = derive_pl_cf_factors(pl.loc[c3], cf.loc[c3], bs.loc[c3])
+                    row    = pd.concat([bs_f.loc[c3], plcf_f], axis=1)
+                    common = c3
                 else:
                     row = bs_f
             else:
                 row = bs_f
+
+            if ratios is not None:
+                cr = common.intersection(ratios.index)
+                if len(cr) >= MIN_MARCH_YEARS:
+                    rat_f = derive_ratio_factors(ratios.loc[cr])
+                    row   = row.loc[cr].join(rat_f)
 
             row.insert(0, "Company", ticker)
             row.insert(1, "Sector",  sector)
