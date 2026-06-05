@@ -101,7 +101,34 @@ def load_cf(ticker: str) -> pd.DataFrame | None:
 
 
 def load_ratios(ticker: str) -> pd.DataFrame | None:
-    return _load_statement(ticker, "ratios.parquet")
+    path = os.path.join(SOURCE_DB, ticker, "ratios.parquet")
+    if not os.path.exists(path):
+        return None
+    try:
+        raw = pd.read_parquet(path)
+    except Exception:
+        return None
+
+    raw.columns      = ["metric"] + list(raw.columns[1:])
+    raw["metric"]    = raw["metric"].apply(_clean)
+    raw              = raw.set_index("metric").T
+    raw.index.name   = "period"
+
+    import re
+    march            = raw[raw.index.str.match(r"^Mar \d{4}$")].copy()
+    march.index      = march.index.str.replace("Mar ", "").astype(int)
+    march.index.name = "year"
+    march            = march[march.index >= MIN_YEAR]
+
+    if len(march) < MIN_MARCH_YEARS:
+        return None
+
+    # Strip % and commas before numeric conversion
+    def _to_num(s):
+        cleaned = s.astype(str).str.replace("%", "").str.replace(",", "").str.strip()
+        return pd.to_numeric(cleaned, errors="coerce")
+
+    return march.apply(_to_num)
 
 
 def load_detailed_bs(ticker: str) -> pd.DataFrame | None:
