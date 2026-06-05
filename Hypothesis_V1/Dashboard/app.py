@@ -267,24 +267,47 @@ tab1, tab2, tab3 = st.tabs(["  Correlation Matrix  ", "  Factor Explorer  ", "  
 # TAB 1 — Correlation Matrix
 # ══════════════════════════════════════════════════════════════════════════════
 with tab1:
-    # ── Group filter ──────────────────────────────────────────────────────────
+    # ── Two independent selectors ─────────────────────────────────────────────
     all_groups = list(dict.fromkeys(FACTOR_META[f]["group"] for f in avail if f in FACTOR_META))
-    sel_groups_hm = st.multiselect(
-        "Factor Groups", all_groups, default=all_groups, key="hm_groups",
-        help="Select which factor groups to include in the correlation matrix"
-    )
+
+    col_hm_sel, col_an_sel = st.columns(2)
+    with col_hm_sel:
+        st.markdown('<div class="section-hd">Heatmap — Factor Groups</div>', unsafe_allow_html=True)
+        sel_groups_hm = st.multiselect(
+            "hm_label", all_groups, default=all_groups, key="hm_groups",
+            label_visibility="collapsed"
+        )
+    with col_an_sel:
+        st.markdown('<div class="section-hd">Analysis — Factor Groups</div>', unsafe_allow_html=True)
+        sel_groups_an = st.multiselect(
+            "an_label", all_groups, default=all_groups, key="an_groups",
+            label_visibility="collapsed"
+        )
+
     hm_factors = [f for f in avail if FACTOR_META.get(f, {}).get("group") in sel_groups_hm]
+    an_factors = [f for f in avail if FACTOR_META.get(f, {}).get("group") in sel_groups_an]
+
     if len(hm_factors) < 2:
-        st.info("Select at least 2 factor groups.")
+        st.info("Select at least 2 factor groups for the heatmap.")
         st.stop()
+    if len(an_factors) < 2:
+        st.info("Select at least 2 factor groups for the analysis.")
+        st.stop()
+
+    # Heatmap uses hm_factors
     corr   = compute_corr(df[hm_factors], method)
     pval   = corr_pvalues(df[hm_factors])
     order  = cluster_order(corr)
     corr_o = corr.loc[order, order]
     pval_o = pval.loc[order, order]
-    groups = find_redundant_groups(corr_o, threshold)
+
+    # Analysis uses an_factors independently
+    an_corr  = compute_corr(df[an_factors], method)
+    an_order = cluster_order(an_corr)
+    an_corr_o= an_corr.loc[an_order, an_order]
+    groups   = find_redundant_groups(an_corr_o, threshold)
     redundant_set = {d for v in groups.values() for d in v}
-    retained      = [f for f in order if f not in redundant_set]
+    retained      = [f for f in an_order if f not in redundant_set]
 
     z    = corr_o.values
     mask = np.triu(np.ones_like(z, dtype=bool), k=1)
@@ -342,7 +365,7 @@ with tab1:
                     f'<span class="chip chip-r">{FACTOR_META[d]["label"]}</span>'
                     for d in dupes
                 )
-                r_vals = [f"{corr_o.loc[rep, d]:.2f}" for d in dupes]
+                r_vals = [f"{an_corr_o.loc[rep, d]:.2f}" for d in dupes]
                 st.markdown(
                     f'<div class="insight-box">'
                     f'<p><b>{rep_lbl}</b> &nbsp;is redundant with</p>'
