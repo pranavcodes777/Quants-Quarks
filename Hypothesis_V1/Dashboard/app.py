@@ -498,12 +498,17 @@ with tab3:
         "Factor Groups", all_groups_snap, default=all_groups_snap, key="snap_groups",
         help="Filter which factor groups to display"
     )
-    snap_avail = [f for f in avail if FACTOR_META.get(f, {}).get("group") in sel_groups_snap]
-
     snap_row = df[(df["Company"] == snap_co) & (df["year"] == snap_yr)]
     if snap_row.empty:
         st.warning(f"No data for {snap_co} in {snap_yr}.")
         st.stop()
+
+    # Only show factors this company actually has data for in the selected year
+    snap_avail = [
+        f for f in avail
+        if FACTOR_META.get(f, {}).get("group") in sel_groups_snap
+        and pd.notna(snap_row[f].values[0])
+    ]
 
     snap_vals = snap_row[snap_avail].iloc[0]
     peer_df   = df[df["year"] == snap_yr][snap_avail]
