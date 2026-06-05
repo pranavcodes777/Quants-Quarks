@@ -263,10 +263,29 @@ with tab1:
         "hm_label", all_groups, default=all_groups, key="hm_groups",
         label_visibility="collapsed"
     )
-    hm_factors = [f for f in avail if FACTOR_META.get(f, {}).get("group") in sel_groups_hm]
+    hm_col1, hm_col2 = st.columns([5, 1])
+    with hm_col1:
+        hm_factors = [f for f in avail if FACTOR_META.get(f, {}).get("group") in sel_groups_hm]
+    with hm_col2:
+        inc_ret = st.checkbox(
+            "Include Return",
+            value=False,
+            key="hm_inc_ret",
+            help="Append 1-year forward stock return to the heatmap so you can see which factors correlate with actual price performance."
+        )
+
+    if inc_ret and "Return_1Y_Fwd" in df.columns and df["Return_1Y_Fwd"].notna().sum() > 5:
+        hm_factors = hm_factors + ["Return_1Y_Fwd"]
+
     if len(hm_factors) < 2:
         st.info("Select at least 2 factor groups.")
         st.stop()
+
+    # Label lookup that handles Return_1Y_Fwd (not in FACTOR_META)
+    def _label(f):
+        if f == "Return_1Y_Fwd":
+            return "Fwd Return 1Y"
+        return FACTOR_META[f]["label"]
 
     corr   = compute_corr(df[hm_factors], method)
     pval   = corr_pvalues(df[hm_factors])
@@ -278,7 +297,7 @@ with tab1:
     mask = np.triu(np.ones_like(z, dtype=bool), k=1)
     z_lo = np.where(mask, np.nan, z)
 
-    labels = [FACTOR_META[f]["label"] for f in order]
+    labels = [_label(f) for f in order]
     annot  = []
     for i in range(len(order)):
         row = []
@@ -381,8 +400,8 @@ with tab1:
 
     st.download_button(
         "↓ Export Correlation Matrix (CSV)",
-        corr_o.rename(columns={f: FACTOR_META[f]["label"] for f in corr_o.columns},
-                      index={f: FACTOR_META[f]["label"] for f in corr_o.index}).to_csv(),
+        corr_o.rename(columns={f: _label(f) for f in corr_o.columns},
+                      index={f: _label(f) for f in corr_o.index}).to_csv(),
         file_name=f"corr_{sector}_{method}.csv",
         mime="text/csv",
     )
