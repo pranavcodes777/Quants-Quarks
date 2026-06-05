@@ -488,7 +488,7 @@ with tab3:
         st.stop()
 
     snap_vals = snap_row[snap_avail].iloc[0]
-    peer_df   = df[df["year"] == snap_yr][avail]
+    peer_df   = df[df["year"] == snap_yr][snap_avail]
 
     pct_ranks = {}
     for f in snap_avail:
@@ -498,9 +498,9 @@ with tab3:
         else:
             pct_ranks[f] = np.nan
 
-    # Percentile bar chart
-    bar_labels = [FACTOR_META[f]["label"] for f in avail]
-    bar_vals   = [pct_ranks.get(f, np.nan) for f in avail]
+    # Percentile bar chart — only selected factors
+    bar_labels = [FACTOR_META[f]["label"] for f in snap_avail]
+    bar_vals   = [pct_ranks.get(f, np.nan) for f in snap_avail]
     bar_colors = ["#3fb950" if (v or 0) >= 50 else "#f85149" for v in bar_vals]
 
     fig_snap = go.Figure(go.Bar(
@@ -526,14 +526,14 @@ with tab3:
     )
     st.plotly_chart(fig_snap, use_container_width=True)
 
-    # Detail table
+    # Detail table — only selected factors
     st.markdown('<div class="section-hd">Factor Detail</div>', unsafe_allow_html=True)
     snap_tbl = pd.DataFrame({
-        "Factor":       [FACTOR_META[f]["label"] for f in avail],
-        "Group":        [FACTOR_META[f]["group"]  for f in avail],
-        "Value":        [round(snap_vals[f], 4) if pd.notna(snap_vals[f]) else None for f in avail],
-        "Percentile":   [f"{pct_ranks[f]:.0f}th" if pd.notna(pct_ranks[f]) else None for f in avail],
-        "Description":  [FACTOR_META[f]["desc"]   for f in avail],
+        "Factor":       [FACTOR_META[f]["label"] for f in snap_avail],
+        "Group":        [FACTOR_META[f]["group"]  for f in snap_avail],
+        "Value":        [round(snap_vals[f], 4) if pd.notna(snap_vals[f]) else None for f in snap_avail],
+        "Percentile":   [f"{pct_ranks[f]:.0f}th" if pd.notna(pct_ranks[f]) else None for f in snap_avail],
+        "Description":  [FACTOR_META[f]["desc"]   for f in snap_avail],
     })
     st.dataframe(snap_tbl.set_index("Factor"), use_container_width=True)
 
