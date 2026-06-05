@@ -143,9 +143,11 @@ GROUP_COLORS = {
 
 # ── Data loading ───────────────────────────────────────────────────────────────
 def _parquet_hash() -> str:
-    import hashlib
+    import hashlib, os
+    size = os.path.getsize(_DB_PATH)
     with open(_DB_PATH, "rb") as f:
-        return hashlib.md5(f.read(4096)).hexdigest()
+        h = hashlib.md5(f.read()).hexdigest()
+    return f"{size}_{h}"
 
 @st.cache_data(show_spinner="Loading data…")
 def _load_all(file_hash: str) -> pd.DataFrame:
