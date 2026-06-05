@@ -162,10 +162,10 @@ def derive_bs_factors(bs: pd.DataFrame) -> pd.DataFrame:
     ta      = _col(bs, "Total Assets").replace(0, np.nan)
     fa      = _col(bs, "Fixed Assets")
     cw      = _col(bs, "CWIP")
-    br      = _col(bs, "Borrowings").replace(0, np.nan)
+    br      = _col(bs, "Borrowings")               # keep 0 — zero debt is valid data
     fa_cwip = (fa + cw).replace(0, np.nan)
 
-    f["Debt_to_Equity"]     = br / eq.replace(0, np.nan)
+    f["Debt_to_Equity"]     = br / eq.replace(0, np.nan)   # 0/eq = 0 for debt-free cos
     f["Debt_to_Assets"]     = br / ta
     f["Equity_Ratio"]       = eq / ta
     f["Financial_Leverage"] = ta / eq.replace(0, np.nan)
@@ -178,7 +178,7 @@ def derive_bs_factors(bs: pd.DataFrame) -> pd.DataFrame:
     f["Assets_Growth"]      = _col(bs, "Total Assets").pct_change() * 100
     f["Equity_Growth"]      = eq.pct_change() * 100
     f["Reserves_Growth"]    = _col(bs, "Reserves").pct_change() * 100
-    f["Borrowings_Growth"]  = br.pct_change() * 100
+    f["Borrowings_Growth"]  = br.replace(0, np.nan).pct_change() * 100  # growth undefined when no debt
     return f
 
 
