@@ -104,6 +104,29 @@ def load_ratios(ticker: str) -> pd.DataFrame | None:
     return _load_statement(ticker, "ratios.parquet")
 
 
+def load_detailed_bs(ticker: str) -> pd.DataFrame | None:
+    """Load the Playwright-scraped expanded balance sheet."""
+    path = os.path.join(SOURCE_DB, ticker, "balance_sheet_detailed.parquet")
+    if not os.path.exists(path):
+        return None
+    try:
+        df = pd.read_parquet(path)
+    except Exception:
+        return None
+
+    # Index is already metric names; columns are period strings ("Mar 2015" …)
+    march = df[[c for c in df.columns if str(c).startswith("Mar")]].copy()
+    march.columns = [str(c).replace("Mar ", "") for c in march.columns]
+    march.columns = march.columns.astype(int)
+    march = march.loc[:, march.columns >= MIN_YEAR]
+    if march.shape[1] < MIN_MARCH_YEARS:
+        return None
+    # Transpose: rows = year, columns = metric
+    out = march.T
+    out.index.name = "year"
+    return out.apply(pd.to_numeric, errors="coerce")
+
+
 # ── Factor derivation ──────────────────────────────────────────────────────────
 
 def derive_bs_factors(bs: pd.DataFrame) -> pd.DataFrame:
@@ -177,6 +200,60 @@ def derive_pl_cf_factors(pl: pd.DataFrame, cf: pd.DataFrame,
     return f
 
 
+def derive_detailed_bs_factors(dbs: pd.DataFrame) -> pd.DataFrame:
+    f = pd.DataFrame(index=dbs.index)
+
+    def g(name):
+        return dbs[name] if name in dbs.columns else pd.Series(0.0, index=dbs.index)
+
+    # Current assets (from Other Assets expansion)
+    inv  = g("Inventories")
+    rec  = g("Trade receivables")
+    cash = g("Cash Equivalents")
+    loans= g("Loans n Advances")
+    oai  = g("Other asset items")
+    curr_assets = inv + rec + cash + loans + oai
+
+    # Current liabilities (from Other Liabilities expansion)
+    tp   = g("Trade Payables")
+    stb  = g("Short term Borrowings")
+    afc  = g("Advance from Customers")
+    oli  = g("Other liability items")
+    curr_liab = tp + stb + afc + oli
+
+    curr_liab_safe = curr_liab.replace(0, np.nan)
+    inv_safe       = inv.replace(0, np.nan)
+
+    # Liquidity ratios
+    f["Current_Ratio"]  = curr_assets / curr_liab_safe
+    f["Quick_Ratio"]    = (curr_assets - inv) / curr_liab_safe
+    f["Cash_Ratio"]     = cash / curr_liab_safe
+
+    # Debt composition
+    ltb = g("Long term Borrowings")
+    f["LT_Debt_Ratio"]  = ltb / (ltb + stb).replace(0, np.nan)  # % of debt that is long-term
+
+    # Net Debt
+    total_debt = g("Borrowings")
+    net_debt   = (total_debt - cash).clip(lower=0)   # negative net debt = net cash
+    eq         = g("Equity Capital") + g("Reserves")
+    f["Net_Debt_to_Equity"] = net_debt / eq.replace(0, np.nan)
+
+    # Asset quality
+    gross = g("Gross Block").replace(0, np.nan)
+    acc_dep = g("Accumulated Depreciation")
+    f["Asset_Age_Ratio"]    = acc_dep / gross  # higher = older assets, nearing replacement
+
+    # Absolute working capital components (normalised by total assets)
+    ta = g("Total Assets").replace(0, np.nan)
+    f["Inventory_to_Assets"]    = inv  / ta
+    f["Receivables_to_Assets"]  = rec  / ta
+    f["Cash_to_Assets"]         = cash / ta
+    f["TradePayables_to_Assets"]= tp   / ta
+
+    return f
+
+
 def derive_ratio_factors(ratios: pd.DataFrame) -> pd.DataFrame:
     f = pd.DataFrame(index=ratios.index)
 
@@ -212,6 +289,7 @@ def build_sector_factors(sectors: list[str] | None = None) -> pd.DataFrame:
             pl     = load_pl(ticker)
             cf     = load_cf(ticker)
             ratios = load_ratios(ticker)
+            dbs    = load_detailed_bs(ticker)
 
             bs_f   = derive_bs_factors(bs)
             common = bs.index
@@ -232,6 +310,13 @@ def build_sector_factors(sectors: list[str] | None = None) -> pd.DataFrame:
                 if len(cr) >= MIN_MARCH_YEARS:
                     rat_f = derive_ratio_factors(ratios.loc[cr])
                     row   = row.loc[cr].join(rat_f)
+                    common = cr
+
+            if dbs is not None:
+                cd = common.intersection(dbs.index)
+                if len(cd) >= MIN_MARCH_YEARS:
+                    dbs_f = derive_detailed_bs_factors(dbs.loc[cd])
+                    row   = row.loc[cd].join(dbs_f)
 
             row.insert(0, "Company", ticker)
             row.insert(1, "Sector",  sector)

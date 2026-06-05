@@ -112,6 +112,19 @@ FACTOR_META: dict[str, dict] = {
     "Cash_Conversion_Cycle":  {"label": "Cash Conversion Cycle",  "group": "Efficiency",    "desc": "Debtor Days + Inventory Days - Days Payable. Negative = suppliers fund the business. HUL runs deeply negative."},
     "Working_Capital_Days":   {"label": "Working Capital Days",   "group": "Efficiency",    "desc": "Days of sales tied up in net working capital."},
     "ROCE":                   {"label": "ROCE %",                 "group": "Profitability", "desc": "Return on Capital Employed. Measures returns on both debt and equity capital together."},
+    # Liquidity
+    "Current_Ratio":       {"label": "Current Ratio",        "group": "Liquidity",     "desc": "Current Assets / Current Liabilities. >1 means short-term assets cover short-term obligations."},
+    "Quick_Ratio":         {"label": "Quick Ratio",          "group": "Liquidity",     "desc": "(Current Assets - Inventory) / Current Liabilities. Tougher test — excludes inventory which may not sell quickly."},
+    "Cash_Ratio":          {"label": "Cash Ratio",           "group": "Liquidity",     "desc": "Cash / Current Liabilities. The strictest liquidity test — can the company cover liabilities with cash alone."},
+    "Net_Debt_to_Equity":  {"label": "Net Debt / Equity",    "group": "Liquidity",     "desc": "(Total Debt - Cash) / Equity. Negative = net cash company (more cash than debt)."},
+    "LT_Debt_Ratio":       {"label": "LT Debt Ratio",        "group": "Leverage",      "desc": "Long-term Borrowings / Total Borrowings. Higher = debt is long duration, less refinancing risk."},
+    # Asset quality
+    "Asset_Age_Ratio":     {"label": "Asset Age Ratio",      "group": "Asset Mix",     "desc": "Accumulated Depreciation / Gross Block. Higher = older assets, capex cycle may be due soon."},
+    # Composition (normalised)
+    "Inventory_to_Assets":      {"label": "Inventory / Assets",      "group": "Efficiency",    "desc": "Inventories as % of total assets. High = capital tied up in stock."},
+    "Receivables_to_Assets":    {"label": "Receivables / Assets",    "group": "Efficiency",    "desc": "Trade receivables as % of total assets. High = customers slow to pay."},
+    "Cash_to_Assets":           {"label": "Cash / Assets",           "group": "Liquidity",     "desc": "Cash & equivalents as % of total assets. High = strong liquidity buffer."},
+    "TradePayables_to_Assets":  {"label": "Trade Payables / Assets", "group": "Efficiency",    "desc": "Trade payables as % of total assets. High = company relies heavily on supplier credit."},
 }
 
 FACTOR_COLS  = list(FACTOR_META.keys())
@@ -124,6 +137,7 @@ GROUP_COLORS = {
     "Size":         "#d2a8ff",
     "Efficiency":   "#a5d6ff",
     "Capex":        "#ffa657",
+    "Liquidity":    "#56d364",
 }
 
 
