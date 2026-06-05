@@ -472,8 +472,8 @@ with tab3:
     snap_tbl = pd.DataFrame({
         "Factor":       [FACTOR_META[f]["label"] for f in avail],
         "Group":        [FACTOR_META[f]["group"]  for f in avail],
-        "Value":        [round(snap_vals[f], 4) if pd.notna(snap_vals[f]) else "—" for f in avail],
-        "Percentile":   [f"{pct_ranks[f]:.0f}th" if pd.notna(pct_ranks[f]) else "—" for f in avail],
+        "Value":        [round(snap_vals[f], 4) if pd.notna(snap_vals[f]) else None for f in avail],
+        "Percentile":   [f"{pct_ranks[f]:.0f}th" if pd.notna(pct_ranks[f]) else None for f in avail],
         "Description":  [FACTOR_META[f]["desc"]   for f in avail],
     })
     st.dataframe(snap_tbl.set_index("Factor"), use_container_width=True)
