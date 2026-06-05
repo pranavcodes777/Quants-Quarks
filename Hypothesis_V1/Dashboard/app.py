@@ -13,6 +13,7 @@ import plotly.express as px
 from scipy import stats
 from scipy.cluster.hierarchy import linkage, leaves_list
 from scipy.spatial.distance import squareform
+from scipy.stats import linregress as _linregress
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "Ingest"))
 from factor_builder import SECTORS
@@ -82,45 +83,34 @@ FACTOR_META: dict[str, dict] = {
     "FixedAssets_Growth": {"label": "Fixed Asset Growth %",   "group": "Growth",       "desc": "Year-on-year % growth in net fixed assets."},
     "Reserves_Growth":    {"label": "Reserves Growth %",      "group": "Growth",       "desc": "Year-on-year % growth in reserves. Strong proxy for retained earnings build-up."},
     "Borrowings_Growth":  {"label": "Borrowings Growth %",    "group": "Growth",       "desc": "Year-on-year % change in total borrowings. Positive = debt rising."},
-    # Profitability
     "Operating_Margin":  {"label": "Operating Margin %",  "group": "Profitability", "desc": "Operating Profit / Sales. Core business profitability before interest and tax."},
     "Net_Margin":        {"label": "Net Margin %",        "group": "Profitability", "desc": "Net Profit / Sales. How much of each revenue rupee becomes profit after everything."},
     "ROE":               {"label": "ROE %",               "group": "Profitability", "desc": "Net Profit / Equity. Return generated on shareholders capital. The most watched profitability metric."},
     "ROA":               {"label": "ROA %",               "group": "Profitability", "desc": "Net Profit / Total Assets. Returns on every rupee of assets deployed regardless of funding source."},
     "Interest_Coverage": {"label": "Interest Coverage",   "group": "Profitability", "desc": "Operating Profit / Interest. Times earnings cover debt payments. NaN means zero debt — not a risk."},
-    # Growth
     "Revenue_Growth":    {"label": "Revenue Growth %",    "group": "Growth",        "desc": "Year-on-year sales growth. Top-line momentum."},
     "NetProfit_Growth":  {"label": "Net Profit Growth %", "group": "Growth",        "desc": "Year-on-year net profit growth. Bottom-line momentum."},
-    # Cash quality
     "CFO_to_NetProfit":  {"label": "CFO / Net Profit",    "group": "Cash Quality",  "desc": "Cash from Operations / Net Profit. >1 = profits backed by real cash. The single best earnings quality test."},
     "FCF_Margin":        {"label": "FCF Margin %",        "group": "Cash Quality",  "desc": "Free Cash Flow / Sales. True economic profitability after all capex. What the business actually generates."},
-    # Profitability (additional)
     "EBITDA_Margin":          {"label": "EBITDA Margin %",        "group": "Profitability", "desc": "(Operating Profit + Depreciation) / Sales. Profitability before interest, tax, and accounting charges."},
-    # Efficiency
     "Asset_Turnover":         {"label": "Asset Turnover",         "group": "Efficiency",    "desc": "Sales / Total Assets. How productively the company uses its asset base to generate revenue."},
     "FixedAsset_Turnover":    {"label": "Fixed Asset Turnover",   "group": "Efficiency",    "desc": "Sales / Fixed Assets. Revenue generated per rupee of fixed asset. Higher = sweating assets harder."},
-    # Growth (additional)
     "OpProfit_Growth":        {"label": "Op. Profit Growth %",    "group": "Growth",        "desc": "Year-on-year operating profit growth."},
     "EBITDA_Growth":          {"label": "EBITDA Growth %",        "group": "Growth",        "desc": "Year-on-year EBITDA growth."},
-    # Capex
     "Capex_to_Sales":         {"label": "Capex / Sales %",        "group": "Capex",         "desc": "Capital expenditure as % of sales. Higher = capital-intensive; reinvesting heavily."},
     "Capex_to_Depreciation":  {"label": "Capex / Depreciation",   "group": "Capex",         "desc": ">1 = growing asset base (growth capex). <1 = just maintaining assets (maintenance capex)."},
-    # Working capital efficiency
     "Debtor_Days":            {"label": "Debtor Days",            "group": "Efficiency",    "desc": "Days to collect from customers. Lower = faster cash collection."},
     "Inventory_Days":         {"label": "Inventory Days",         "group": "Efficiency",    "desc": "Days inventory sits before being sold. Lower = leaner operations."},
     "Days_Payable":           {"label": "Days Payable",           "group": "Efficiency",    "desc": "Days taken to pay suppliers. Higher = company has more supplier financing."},
     "Cash_Conversion_Cycle":  {"label": "Cash Conversion Cycle",  "group": "Efficiency",    "desc": "Debtor Days + Inventory Days - Days Payable. Negative = suppliers fund the business. HUL runs deeply negative."},
     "Working_Capital_Days":   {"label": "Working Capital Days",   "group": "Efficiency",    "desc": "Days of sales tied up in net working capital."},
     "ROCE":                   {"label": "ROCE %",                 "group": "Profitability", "desc": "Return on Capital Employed. Measures returns on both debt and equity capital together."},
-    # Liquidity
     "Current_Ratio":       {"label": "Current Ratio",        "group": "Liquidity",     "desc": "Current Assets / Current Liabilities. >1 means short-term assets cover short-term obligations."},
     "Quick_Ratio":         {"label": "Quick Ratio",          "group": "Liquidity",     "desc": "(Current Assets - Inventory) / Current Liabilities. Tougher test — excludes inventory which may not sell quickly."},
     "Cash_Ratio":          {"label": "Cash Ratio",           "group": "Liquidity",     "desc": "Cash / Current Liabilities. The strictest liquidity test — can the company cover liabilities with cash alone."},
     "Net_Debt_to_Equity":  {"label": "Net Debt / Equity",    "group": "Liquidity",     "desc": "(Total Debt - Cash) / Equity. Negative = net cash company (more cash than debt)."},
     "LT_Debt_Ratio":       {"label": "LT Debt Ratio",        "group": "Leverage",      "desc": "Long-term Borrowings / Total Borrowings. Higher = debt is long duration, less refinancing risk."},
-    # Asset quality
     "Asset_Age_Ratio":     {"label": "Asset Age Ratio",      "group": "Asset Mix",     "desc": "Accumulated Depreciation / Gross Block. Higher = older assets, capex cycle may be due soon."},
-    # Composition (normalised)
     "Inventory_to_Assets":      {"label": "Inventory / Assets",      "group": "Efficiency",    "desc": "Inventories as % of total assets. High = capital tied up in stock."},
     "Receivables_to_Assets":    {"label": "Receivables / Assets",    "group": "Efficiency",    "desc": "Trade receivables as % of total assets. High = customers slow to pay."},
     "Cash_to_Assets":           {"label": "Cash / Assets",           "group": "Liquidity",     "desc": "Cash & equivalents as % of total assets. High = strong liquidity buffer."},
@@ -267,7 +257,6 @@ tab1, tab2, tab3, tab4 = st.tabs(["  Correlation Matrix  ", "  Factor Explorer  
 # TAB 1 — Correlation Matrix
 # ══════════════════════════════════════════════════════════════════════════════
 with tab1:
-    # ── Heatmap group selector ────────────────────────────────────────────────
     all_groups = list(dict.fromkeys(FACTOR_META[f]["group"] for f in avail if f in FACTOR_META))
     st.markdown('<div class="section-hd">Heatmap — Factor Groups</div>', unsafe_allow_html=True)
     sel_groups_hm = st.multiselect(
@@ -279,7 +268,6 @@ with tab1:
         st.info("Select at least 2 factor groups.")
         st.stop()
 
-    # Heatmap computation
     corr   = compute_corr(df[hm_factors], method)
     pval   = corr_pvalues(df[hm_factors])
     order  = cluster_order(corr)
@@ -325,10 +313,8 @@ with tab1:
         yaxis=dict(tickfont=dict(size=8.5), showgrid=False),
     )
     st.plotly_chart(fig_hm, use_container_width=True)
-
     st.caption(f"** = |r| ≥ {threshold:.2f} (redundant)   * = |r| ≥ 0.60   Method: {method}   n = {n_obs} observations")
 
-    # ── Analysis group selector (independent of heatmap) ─────────────────────
     st.divider()
     st.markdown('<div class="section-hd">Analysis — Factor Groups</div>', unsafe_allow_html=True)
     sel_groups_an = st.multiselect(
@@ -346,7 +332,6 @@ with tab1:
     redundant_set = {d for v in groups.values() for d in v}
     retained      = [f for f in an_order if f not in redundant_set]
 
-    # ── Analysis cards ─────────────────────────────────────────────────────────
     col_l, col_r = st.columns(2)
 
     with col_l:
@@ -394,7 +379,6 @@ with tab1:
             unsafe_allow_html=True,
         )
 
-    # Download
     st.download_button(
         "↓ Export Correlation Matrix (CSV)",
         corr_o.rename(columns={f: FACTOR_META[f]["label"] for f in corr_o.columns},
@@ -452,7 +436,6 @@ with tab2:
     )
     st.plotly_chart(fig_line, use_container_width=True)
 
-    # Box plot distribution
     fig_box = px.box(
         chart_df, x="Company", y=f_choice,
         color="Company",
@@ -471,7 +454,6 @@ with tab2:
     )
     st.plotly_chart(fig_box, use_container_width=True)
 
-    # Stats table
     st.markdown('<div class="section-hd">Summary Statistics by Company</div>', unsafe_allow_html=True)
     stats_tbl = (
         df.groupby("Company")[f_choice]
@@ -492,7 +474,6 @@ with tab3:
     with col_cb:
         snap_yr = st.selectbox("Year", sorted(df["year"].unique(), reverse=True), key="snap_yr")
 
-    # ── Factor group filter ───────────────────────────────────────────────────
     all_groups_snap = list(dict.fromkeys(FACTOR_META[f]["group"] for f in avail if f in FACTOR_META))
     sel_groups_snap = st.multiselect(
         "Factor Groups", all_groups_snap, default=all_groups_snap, key="snap_groups",
@@ -503,7 +484,6 @@ with tab3:
         st.warning(f"No data for {snap_co} in {snap_yr}.")
         st.stop()
 
-    # Only show factors this company actually has data for in the selected year
     snap_avail = [
         f for f in avail
         if FACTOR_META.get(f, {}).get("group") in sel_groups_snap
@@ -521,7 +501,6 @@ with tab3:
         else:
             pct_ranks[f] = np.nan
 
-    # Percentile bar chart — only selected factors
     bar_labels = [FACTOR_META[f]["label"] for f in snap_avail]
     bar_vals   = [pct_ranks.get(f, np.nan) for f in snap_avail]
     bar_colors = ["#3fb950" if (v or 0) >= 50 else "#f85149" for v in bar_vals]
@@ -549,7 +528,6 @@ with tab3:
     )
     st.plotly_chart(fig_snap, use_container_width=True)
 
-    # Detail table — only selected factors
     st.markdown('<div class="section-hd">Factor Detail</div>', unsafe_allow_html=True)
     snap_tbl = pd.DataFrame({
         "Factor":       [FACTOR_META[f]["label"] for f in snap_avail],
@@ -560,7 +538,6 @@ with tab3:
     })
     st.dataframe(snap_tbl.set_index("Factor"), use_container_width=True)
 
-    # Multi-year trend for this company
     st.markdown('<div class="section-hd">All Factors — Historical</div>', unsafe_allow_html=True)
     hist = df[df["Company"] == snap_co][["year"] + snap_avail].set_index("year").T
     hist.index = [FACTOR_META[f]["label"] for f in hist.index]
@@ -569,92 +546,269 @@ with tab3:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 4 — Factor Predictability (Phase 2: Information Coefficient)
+# TAB 4 — Factor Predictability  (Phase 2)
 # ══════════════════════════════════════════════════════════════════════════════
 with tab4:
-    st.markdown("## Which factors predict future returns?", unsafe_allow_html=True)
 
-    # Filter to rows with forward returns
-    df_ic = df[df["Return_1Y_Fwd"].notna()].copy()
+    # ── Controls row ─────────────────────────────────────────────────────────
+    ctrl_l, ctrl_r = st.columns([3, 1])
+
+    with ctrl_l:
+        st.markdown('<div class="section-hd">Filters</div>', unsafe_allow_html=True)
+        sl1, sl2, sl3 = st.columns(3)
+        with sl1:
+            min_ic   = st.slider("Min |IC|",    0.00, 0.30, 0.00, 0.01, key="p2_min_ic",
+                                  help="Only show factors where |IC| ≥ this value")
+        with sl2:
+            max_pval = st.slider("Max p-value", 0.01, 0.20, 0.10, 0.01, key="p2_max_p",
+                                  help="Only show factors where p-value ≤ threshold (0.05 = 95% confidence)")
+        with sl3:
+            min_n    = st.slider("Min N",       10,   300,  30,   10,   key="p2_min_n",
+                                  help="Only show factors with at least N observations")
+
+    with ctrl_r:
+        st.markdown('<div class="section-hd">Show Columns</div>', unsafe_allow_html=True)
+        show_ic   = st.checkbox("IC",      value=True,  key="p2_show_ic")
+        show_r2   = st.checkbox("R²",      value=True,  key="p2_show_r2")
+        show_beta = st.checkbox("Beta",    value=True,  key="p2_show_beta")
+        show_pval = st.checkbox("P-Value", value=True,  key="p2_show_pval")
+        show_n    = st.checkbox("N",       value=True,  key="p2_show_n")
+
+    # ── Factor group selector ─────────────────────────────────────────────────
+    all_grps_p2 = list(dict.fromkeys(FACTOR_META[f]["group"] for f in avail if f in FACTOR_META))
+    st.markdown('<div class="section-hd">Factor Groups to Analyse</div>', unsafe_allow_html=True)
+    sel_grps_p2 = st.multiselect(
+        "p2_grp_lbl", all_grps_p2, default=all_grps_p2,
+        label_visibility="collapsed", key="p2_groups"
+    )
+    p2_factors = [f for f in avail if FACTOR_META.get(f, {}).get("group") in sel_grps_p2]
+
+    # ── Compute IC, R², Beta for every factor ─────────────────────────────────
+    df_ic = df[df["Return_1Y_Fwd"].notna()].copy() if "Return_1Y_Fwd" in df.columns else pd.DataFrame()
+
     if df_ic.empty:
-        st.warning("No forward return data available.")
+        st.warning("No forward return data available for this sector / year range.")
         st.stop()
 
-    n_obs = len(df_ic)
+    ic_rows = []
+    for f in p2_factors:
+        valid = df_ic[[f, "Return_1Y_Fwd"]].dropna()
+        n = len(valid)
+        if n < 5:
+            continue
+        slope, intercept, r, pval, _ = _linregress(valid[f], valid["Return_1Y_Fwd"])
+        ic_rows.append({
+            "_key":      f,
+            "Factor":    FACTOR_META[f]["label"],
+            "Group":     FACTOR_META[f]["group"],
+            "IC":        round(r,       4),
+            "R2":        round(r ** 2,  4),
+            "Beta":      round(slope,   6),
+            "P-Value":   round(pval,    4),
+            "N":         n,
+            "_intercept": intercept,
+        })
 
-    # Compute Information Coefficient (IC) = correlation with forward returns
-    ic_results = []
-    for f in avail:
-        if f in df_ic.columns:
-            valid = df_ic[[f, "Return_1Y_Fwd"]].dropna()
-            if len(valid) > 1:
-                corr = valid[f].corr(valid["Return_1Y_Fwd"])
-                pval = stats.pearsonr(valid[f], valid["Return_1Y_Fwd"])[1]
-                ic_results.append({
-                    "Factor": FACTOR_META[f]["label"],
-                    "Group": FACTOR_META[f]["group"],
-                    "IC": round(corr, 4),
-                    "P-Value": round(pval, 4),
-                    "Significant": "Yes" if pval < 0.05 else "No",
-                    "N": len(valid),
-                })
+    ic_all = pd.DataFrame(ic_rows).sort_values("IC", key=abs, ascending=False)
 
-    ic_df = pd.DataFrame(ic_results).sort_values("IC", key=abs, ascending=False)
+    # Apply filters
+    ic_filt = ic_all[
+        (ic_all["IC"].abs()  >= min_ic)   &
+        (ic_all["P-Value"]   <= max_pval) &
+        (ic_all["N"]         >= min_n)
+    ].copy()
 
-    # Display IC table
-    st.markdown('<div class="section-hd">Information Coefficient — All Factors</div>', unsafe_allow_html=True)
-    col_ic1, col_ic2 = st.columns([3, 1])
-    with col_ic1:
-        st.dataframe(ic_df.set_index("Factor"), use_container_width=True)
-    with col_ic2:
-        sig_count = (ic_df["P-Value"] < 0.05).sum()
-        st.metric("Significant Factors", f"{sig_count}/{len(ic_df)}", help="p < 0.05")
+    # ── KPI strip ─────────────────────────────────────────────────────────────
+    kc1, kc2, kc3, kc4, kc5 = st.columns(5)
+    kc1.metric("Factors analysed",  len(ic_all))
+    kc2.metric("Pass filters",      len(ic_filt))
+    kc3.metric("Positive IC",       int((ic_filt["IC"] > 0).sum()))
+    kc4.metric("Negative IC",       int((ic_filt["IC"] < 0).sum()))
+    kc5.metric("Fwd return obs.",   len(df_ic))
 
-    # Scatter plot: selected factor vs forward return
-    st.markdown('<div class="section-hd">Scatter: Factor vs Forward Return</div>', unsafe_allow_html=True)
-    sel_factor_ic = st.selectbox(
-        "Select factor", [r["Factor"] for _, r in ic_df.iterrows()],
-        help="Visualize relationship between factor and next year's return",
-        key="ic_scatter"
+    # ── IC Table ──────────────────────────────────────────────────────────────
+    st.markdown('<div class="section-hd">Factor Predictability Table</div>', unsafe_allow_html=True)
+
+    if ic_filt.empty:
+        st.info("No factors pass the current filters. Relax Min |IC|, Max p-value, or Min N.")
+    else:
+        display_cols = ["Factor", "Group"]
+        if show_ic:   display_cols.append("IC")
+        if show_r2:   display_cols.append("R2")
+        if show_beta: display_cols.append("Beta")
+        if show_pval: display_cols.append("P-Value")
+        if show_n:    display_cols.append("N")
+
+        tbl = ic_filt[display_cols].copy()
+
+        # Colour IC column: green = positive signal, red = negative
+        def _ic_color(v):
+            if not isinstance(v, float): return ""
+            if v >  0.10: return "color: #3fb950"
+            if v < -0.10: return "color: #f85149"
+            return "color: #8b949e"
+
+        styled = tbl.set_index("Factor").style
+        if show_ic:
+            styled = styled.map(_ic_color, subset=["IC"])
+        st.dataframe(styled, use_container_width=True)
+
+    st.divider()
+
+    # ── Deep Dive ─────────────────────────────────────────────────────────────
+    st.markdown('<div class="section-hd">Factor Deep Dive</div>', unsafe_allow_html=True)
+
+    if ic_all.empty:
+        st.info("No factors to analyse for the current selection.")
+        st.stop()
+
+    deep_options = ic_all["Factor"].tolist()
+    sel_label    = st.selectbox("Select factor to deep dive", deep_options, key="p2_deep")
+    sel_row      = ic_all[ic_all["Factor"] == sel_label].iloc[0]
+    sel_key      = sel_row["_key"]
+
+    dd_ic, dd_r2, dd_beta, dd_pval, dd_n, dd_int = (
+        sel_row["IC"], sel_row["R2"], sel_row["Beta"],
+        sel_row["P-Value"], sel_row["N"], sel_row["_intercept"]
     )
-    sel_factor_key = [k for k, v in FACTOR_META.items() if v["label"] == sel_factor_ic][0]
 
-    scatter_data = df_ic[[sel_factor_key, "Return_1Y_Fwd", "Company"]].dropna()
-    fig_scatter = px.scatter(
-        scatter_data,
-        x=sel_factor_key, y="Return_1Y_Fwd",
-        hover_data=["Company"],
-        labels={sel_factor_key: FACTOR_META[sel_factor_key]["label"], "Return_1Y_Fwd": "Forward Return (%)"},
-        title=f"{FACTOR_META[sel_factor_key]['label']} vs Next Year Return",
-        color_discrete_sequence=["#3fb950"],
+    # Significance label
+    if   dd_pval < 0.01: sig_str, chip_cls = "★★★  p < 0.01  (99% confidence)", "chip-g"
+    elif dd_pval < 0.05: sig_str, chip_cls = "★★   p < 0.05  (95% confidence)", "chip-g"
+    elif dd_pval < 0.10: sig_str, chip_cls = "★    p < 0.10  (90% confidence)", "chip-b"
+    else:                sig_str, chip_cls = "✗  Not statistically significant",  "chip-r"
+
+    st.markdown(
+        f'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">'
+        f'<span class="chip chip-g">IC = {dd_ic:+.4f}</span>'
+        f'<span class="chip chip-g">R² = {dd_r2:.4f}</span>'
+        f'<span class="chip chip-g">Beta = {dd_beta:+.6f}</span>'
+        f'<span class="chip chip-b">N = {dd_n}</span>'
+        f'<span class="chip {chip_cls}">{sig_str}</span>'
+        f'</div>',
+        unsafe_allow_html=True,
     )
-    fig_scatter.add_shape(type="line", x0=scatter_data[sel_factor_key].min(), x1=scatter_data[sel_factor_key].max(),
-                          y0=0, y1=0, line=dict(color="#484f58", dash="dot", width=1))
-    fig_scatter.update_layout(
-        height=400, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#8b949e", size=10), showlegend=False,
+
+    dd_left, dd_right = st.columns([3, 2])
+
+    with dd_left:
+        scat = df_ic[[sel_key, "Return_1Y_Fwd", "Company", "year"]].dropna()
+        x_min, x_max = scat[sel_key].min(), scat[sel_key].max()
+        reg_x = [x_min, x_max]
+        reg_y = [dd_int + dd_beta * x for x in reg_x]
+
+        fig_sc = go.Figure()
+        fig_sc.add_trace(go.Scatter(
+            x=scat[sel_key], y=scat["Return_1Y_Fwd"],
+            mode="markers",
+            marker=dict(color="#3fb950", size=6, opacity=0.65),
+            customdata=scat[["Company", "year"]].values,
+            hovertemplate=(
+                "<b>%{customdata[0]}</b>  FY%{customdata[1]}<br>"
+                + sel_label + ": %{x:.3f}<br>"
+                "Fwd Return: %{y:.1f}%<extra></extra>"
+            ),
+            name="Observations",
+        ))
+        fig_sc.add_trace(go.Scatter(
+            x=reg_x, y=reg_y,
+            mode="lines",
+            line=dict(color="#f0b429", width=2),
+            name="Regression",
+        ))
+        fig_sc.add_hline(y=0, line_color="#484f58", line_dash="dot", line_width=1)
+        fig_sc.update_layout(
+            title=f"{sel_label}  ·  IC {dd_ic:+.4f}  ·  R² {dd_r2:.4f}",
+            height=420,
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#8b949e", size=10), showlegend=False,
+            xaxis=dict(title=sel_label, showgrid=True, gridcolor="#21262d"),
+            yaxis=dict(title="Forward Return (%)", showgrid=True, gridcolor="#21262d"),
+        )
+        st.plotly_chart(fig_sc, use_container_width=True)
+
+    with dd_right:
+        st.markdown('<div class="section-hd">Interpretation</div>', unsafe_allow_html=True)
+        direction = "positively" if dd_ic > 0 else "negatively"
+        strength  = "strongly" if abs(dd_ic) > 0.20 else ("moderately" if abs(dd_ic) > 0.10 else "weakly")
+
+        st.markdown(f"""
+**{sel_label}** {strength} correlates {direction} with next-year stock returns in **{sector}**.
+
+---
+**IC = {dd_ic:+.4f}**
+Correlation between this factor and forward return. Quant threshold: |IC| > 0.05 is meaningful, > 0.10 is strong.
+
+**R² = {dd_r2:.4f}**
+This factor alone explains **{dd_r2*100:.1f}%** of next-year return variance. Single factors rarely exceed 10–15%.
+
+**Beta = {dd_beta:+.6f}**
+For every +1 unit in {sel_label}, next-year return changes by **{dd_beta:+.4f}%** on average.
+
+**p-value = {dd_pval:.4f}**
+{sig_str}. Based on {dd_n} observations.
+
+---
+*IC > 0.10 with p < 0.05 = tradeable signal.*
+*IC consistent across years = reliable signal.*
+        """)
+
+    # ── Year-by-year IC chart ─────────────────────────────────────────────────
+    show_yy = st.checkbox("Show Year-by-Year IC Stability", value=True, key="p2_show_yy")
+
+    if show_yy:
+        st.markdown('<div class="section-hd">IC Stability Across Years</div>', unsafe_allow_html=True)
+
+        yy_rows = []
+        for yr in sorted(df_ic["year"].unique()):
+            yd = df_ic[df_ic["year"] == yr][[sel_key, "Return_1Y_Fwd"]].dropna()
+            if len(yd) >= 4:
+                sl_y, _, r_y, pv_y, _ = _linregress(yd[sel_key], yd["Return_1Y_Fwd"])
+                yy_rows.append({"Year": str(int(yr)), "IC": round(r_y, 4), "p": round(pv_y, 4)})
+
+        if yy_rows:
+            yy_df    = pd.DataFrame(yy_rows)
+            mean_ic  = yy_df["IC"].mean()
+            pct_pos  = (yy_df["IC"] > 0).mean() * 100
+
+            fig_yy = go.Figure()
+            fig_yy.add_trace(go.Bar(
+                x=yy_df["Year"], y=yy_df["IC"],
+                marker_color=["#3fb950" if v >= 0 else "#f85149" for v in yy_df["IC"]],
+                hovertemplate="FY%{x}<br>IC = %{y:.4f}<extra></extra>",
+                name="Annual IC",
+            ))
+            fig_yy.add_hline(y=0,       line_color="#484f58", line_dash="dot",   line_width=1)
+            fig_yy.add_hline(y=mean_ic, line_color="#f0b429", line_dash="solid", line_width=2,
+                             annotation_text=f"Mean IC = {mean_ic:+.4f}",
+                             annotation_font_color="#f0b429",
+                             annotation_position="top right")
+            fig_yy.update_layout(
+                title=(f"Year-by-Year IC  ·  Positive in {pct_pos:.0f}% of years  ·  "
+                       f"Mean = {mean_ic:+.4f}"),
+                height=340,
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#8b949e", size=10), showlegend=False,
+                xaxis=dict(type="category", showgrid=False),
+                yaxis=dict(showgrid=True, gridcolor="#21262d", zeroline=False),
+            )
+            st.plotly_chart(fig_yy, use_container_width=True)
+
+            # Consistency verdict
+            if pct_pos >= 70 and abs(mean_ic) >= 0.05:
+                verdict = "Consistent signal. Positive IC in most years with meaningful average."
+                vcls    = "chip-g"
+            elif pct_pos <= 40 or abs(mean_ic) < 0.03:
+                verdict = "Inconsistent or weak signal. IC flips sign across years — unreliable."
+                vcls    = "chip-r"
+            else:
+                verdict = "Mixed signal. Use with caution alongside other factors."
+                vcls    = "chip-b"
+            st.markdown(f'<span class="chip {vcls}">{verdict}</span>', unsafe_allow_html=True)
+
+    st.caption(
+        "IC = Pearson correlation between factor at year T and stock return during year T+1.  "
+        "R² = fraction of return variance explained by this factor alone.  "
+        "Beta = OLS slope (magnitude of return impact per unit of factor).  "
+        "Yellow line = mean IC across all years (overall signal direction)."
     )
-    st.plotly_chart(fig_scatter, use_container_width=True)
-
-    # Year-by-year IC
-    st.markdown('<div class="section-hd">Year-by-Year IC — Stability Check</div>', unsafe_allow_html=True)
-    ic_by_year = []
-    for year in sorted(df_ic["year"].unique()):
-        year_data = df_ic[df_ic["year"] == year][[sel_factor_key, "Return_1Y_Fwd"]].dropna()
-        if len(year_data) > 1:
-            ic = year_data[sel_factor_key].corr(year_data["Return_1Y_Fwd"])
-            ic_by_year.append({"Year": year, "IC": round(ic, 4)})
-
-    ic_year_df = pd.DataFrame(ic_by_year)
-    fig_ic_year = px.bar(ic_year_df, x="Year", y="IC", color="IC",
-                         color_continuous_scale=["#f85149", "#484f58", "#3fb950"],
-                         title="IC Stability Across Years (Predictive Power)")
-    fig_ic_year.add_hline(y=0, line_dash="dash", line_color="#484f58")
-    fig_ic_year.update_layout(
-        height=350, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#8b949e", size=10), showlegend=False,
-        xaxis_type="category",
-    )
-    st.plotly_chart(fig_ic_year, use_container_width=True)
-
-    st.caption(f"Based on {n_obs} observations ({sorted(df_ic['year'].unique())[0]}–{sorted(df_ic['year'].unique())[-1]}). IC = Correlation with forward annual return. Year-by-year IC shows if factor's predictive power is consistent or lucky once.")
