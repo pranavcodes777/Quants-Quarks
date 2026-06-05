@@ -82,10 +82,29 @@ FACTOR_META: dict[str, dict] = {
     "FixedAssets_Growth": {"label": "Fixed Asset Growth %",   "group": "Growth",       "desc": "Year-on-year % growth in net fixed assets."},
     "Reserves_Growth":    {"label": "Reserves Growth %",      "group": "Growth",       "desc": "Year-on-year % growth in reserves. Strong proxy for retained earnings build-up."},
     "Borrowings_Growth":  {"label": "Borrowings Growth %",    "group": "Growth",       "desc": "Year-on-year % change in total borrowings. Positive = debt rising."},
+    # Profitability
+    "Operating_Margin":  {"label": "Operating Margin %",  "group": "Profitability", "desc": "Operating Profit / Sales. Core business profitability before interest and tax."},
+    "Net_Margin":        {"label": "Net Margin %",        "group": "Profitability", "desc": "Net Profit / Sales. How much of each revenue rupee becomes profit after everything."},
+    "ROE":               {"label": "ROE %",               "group": "Profitability", "desc": "Net Profit / Equity. Return generated on shareholders capital. The most watched profitability metric."},
+    "ROA":               {"label": "ROA %",               "group": "Profitability", "desc": "Net Profit / Total Assets. Returns on every rupee of assets deployed regardless of funding source."},
+    "Interest_Coverage": {"label": "Interest Coverage",   "group": "Profitability", "desc": "Operating Profit / Interest. Times earnings cover debt payments. NaN means zero debt — not a risk."},
+    # Growth
+    "Revenue_Growth":    {"label": "Revenue Growth %",    "group": "Growth",        "desc": "Year-on-year sales growth. Top-line momentum."},
+    "NetProfit_Growth":  {"label": "Net Profit Growth %", "group": "Growth",        "desc": "Year-on-year net profit growth. Bottom-line momentum."},
+    # Cash quality
+    "CFO_to_NetProfit":  {"label": "CFO / Net Profit",    "group": "Cash Quality",  "desc": "Cash from Operations / Net Profit. >1 = profits backed by real cash. The single best earnings quality test."},
+    "FCF_Margin":        {"label": "FCF Margin %",        "group": "Cash Quality",  "desc": "Free Cash Flow / Sales. True economic profitability after all capex. What the business actually generates."},
 }
 
 FACTOR_COLS  = list(FACTOR_META.keys())
-GROUP_COLORS = {"Leverage": "#f85149", "Asset Mix": "#58a6ff", "Size": "#d2a8ff", "Growth": "#3fb950"}
+GROUP_COLORS = {
+    "Leverage":     "#f85149",
+    "Asset Mix":    "#58a6ff",
+    "Profitability":"#f0b429",
+    "Growth":       "#3fb950",
+    "Cash Quality": "#79c0ff",
+    "Size":         "#d2a8ff",
+}
 
 
 # ── Data loading ───────────────────────────────────────────────────────────────
@@ -118,7 +137,7 @@ def corr_pvalues(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def cluster_order(corr: pd.DataFrame) -> list[str]:
-    dist = (1 - corr.abs()).clip(0, 1).to_numpy(copy=True)
+    dist = (1 - corr.abs()).clip(0, 1).values
     np.fill_diagonal(dist, 0)
     try:
         Z     = linkage(squareform(dist), method="average")
