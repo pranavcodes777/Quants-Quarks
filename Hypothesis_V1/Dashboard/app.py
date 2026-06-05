@@ -546,46 +546,65 @@ with tab3:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+
+# ══════════════════════════════════════════════════════════════════════════════
 # TAB 4 — Factor Predictability  (Phase 2)
 # ══════════════════════════════════════════════════════════════════════════════
 with tab4:
 
-    # ── Controls row ─────────────────────────────────────────────────────────
-    ctrl_l, ctrl_r = st.columns([3, 1])
+    st.markdown("""<style>
+    .p2-bar-track{background:#21262d;border-radius:4px;height:8px;width:100%;margin:4px 0 10px;}
+    .p2-bar-fill{height:8px;border-radius:4px;}
+    .p2-beta-wrap{position:relative;height:8px;background:#21262d;border-radius:4px;margin:4px 0 10px;}
+    .p2-interp{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px 20px;margin-top:14px;}
+    .p2-interp p{margin:0 0 8px;font-size:0.82rem;color:#8b949e;line-height:1.7;}
+    .p2-interp b{color:#e6edf3;}
+    .p2-stat-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+    </style>""", unsafe_allow_html=True)
 
-    with ctrl_l:
-        st.markdown('<div class="section-hd">Filters</div>', unsafe_allow_html=True)
-        sl1, sl2, sl3 = st.columns(3)
-        with sl1:
-            min_ic   = st.slider("Min |IC|",    0.00, 0.30, 0.00, 0.01, key="p2_min_ic",
-                                  help="Only show factors where |IC| ≥ this value")
-        with sl2:
-            max_pval = st.slider("Max p-value", 0.01, 0.20, 0.10, 0.01, key="p2_max_p",
-                                  help="Only show factors where p-value ≤ threshold (0.05 = 95% confidence)")
-        with sl3:
-            min_n    = st.slider("Min N",       10,   300,  30,   10,   key="p2_min_n",
-                                  help="Only show factors with at least N observations")
+    # ── Row 1: Factor groups + stability toggle ───────────────────────────────
+    r1a, r1b = st.columns([4, 1])
+    with r1a:
+        st.markdown('<div class="section-hd">Factor Groups to Analyse</div>', unsafe_allow_html=True)
+        all_grps_p2 = list(dict.fromkeys(FACTOR_META[f]["group"] for f in avail if f in FACTOR_META))
+        sel_grps_p2 = st.multiselect("p2g", all_grps_p2, default=all_grps_p2,
+                                      label_visibility="collapsed", key="p2_groups")
+    with r1b:
+        st.markdown('<div class="section-hd">Stability Chart</div>', unsafe_allow_html=True)
+        show_yy = st.checkbox("Year-by-Year IC", value=True, key="p2_show_yy")
 
-    with ctrl_r:
-        st.markdown('<div class="section-hd">Show Columns</div>', unsafe_allow_html=True)
-        show_ic   = st.checkbox("IC",      value=True,  key="p2_show_ic")
-        show_r2   = st.checkbox("R²",      value=True,  key="p2_show_r2")
-        show_beta = st.checkbox("Beta",    value=True,  key="p2_show_beta")
-        show_pval = st.checkbox("P-Value", value=True,  key="p2_show_pval")
-        show_n    = st.checkbox("N",       value=True,  key="p2_show_n")
-
-    # ── Factor group selector ─────────────────────────────────────────────────
-    all_grps_p2 = list(dict.fromkeys(FACTOR_META[f]["group"] for f in avail if f in FACTOR_META))
-    st.markdown('<div class="section-hd">Factor Groups to Analyse</div>', unsafe_allow_html=True)
-    sel_grps_p2 = st.multiselect(
-        "p2_grp_lbl", all_grps_p2, default=all_grps_p2,
-        label_visibility="collapsed", key="p2_groups"
-    )
     p2_factors = [f for f in avail if FACTOR_META.get(f, {}).get("group") in sel_grps_p2]
 
-    # ── Compute IC, R², Beta for every factor ─────────────────────────────────
-    df_ic = df[df["Return_1Y_Fwd"].notna()].copy() if "Return_1Y_Fwd" in df.columns else pd.DataFrame()
+    # ── Row 2: Filters | Column toggles ──────────────────────────────────────
+    r2a, r2b = st.columns([3, 2])
+    with r2a:
+        st.markdown('<div class="section-hd">Filters</div>', unsafe_allow_html=True)
+        f1, f2, f3 = st.columns(3)
+        with f1:
+            min_ic   = st.slider("Min |IC|",    0.00, 0.30, 0.00, 0.01, key="p2_min_ic",
+                                  help="|IC| = correlation strength. 0.10+ is meaningful.")
+        with f2:
+            max_pval = st.slider("Max p-value", 0.01, 0.20, 0.10, 0.01, key="p2_max_p",
+                                  help="0.05 = 95% confidence the signal is real.")
+        with f3:
+            min_n    = st.slider("Min N",       10,   300,  30,   10,   key="p2_min_n",
+                                  help="Min observations. Larger N = more trustworthy.")
+    with r2b:
+        st.markdown('<div class="section-hd">Table Columns</div>', unsafe_allow_html=True)
+        tc1, tc2, tc3 = st.columns(3)
+        with tc1:
+            show_ic   = st.checkbox("IC",      value=True,  key="p2_show_ic")
+            show_r2   = st.checkbox("R2",      value=True,  key="p2_show_r2")
+        with tc2:
+            show_beta = st.checkbox("Beta",    value=True,  key="p2_show_beta")
+            show_pval = st.checkbox("P-Value", value=True,  key="p2_show_pval")
+        with tc3:
+            show_n    = st.checkbox("N",       value=True,  key="p2_show_n")
 
+    st.divider()
+
+    # ── Data & computation ────────────────────────────────────────────────────
+    df_ic = df[df["Return_1Y_Fwd"].notna()].copy() if "Return_1Y_Fwd" in df.columns else pd.DataFrame()
     if df_ic.empty:
         st.warning("No forward return data available for this sector / year range.")
         st.stop()
@@ -594,24 +613,25 @@ with tab4:
     for f in p2_factors:
         valid = df_ic[[f, "Return_1Y_Fwd"]].dropna()
         n = len(valid)
-        if n < 5:
+        if n < 5 or valid[f].nunique() < 2:
             continue
-        slope, intercept, r, pval, _ = _linregress(valid[f], valid["Return_1Y_Fwd"])
+        try:
+            slope, intercept, r, pval, _ = _linregress(valid[f], valid["Return_1Y_Fwd"])
+        except Exception:
+            continue
         ic_rows.append({
-            "_key":      f,
-            "Factor":    FACTOR_META[f]["label"],
-            "Group":     FACTOR_META[f]["group"],
-            "IC":        round(r,       4),
-            "R2":        round(r ** 2,  4),
-            "Beta":      round(slope,   6),
-            "P-Value":   round(pval,    4),
-            "N":         n,
+            "_key": f,
+            "Factor":  FACTOR_META[f]["label"],
+            "Group":   FACTOR_META[f]["group"],
+            "IC":      round(r,       4),
+            "R2":      round(r ** 2,  4),
+            "Beta":    round(slope,   6),
+            "P-Value": round(pval,    4),
+            "N":       n,
             "_intercept": intercept,
         })
 
-    ic_all = pd.DataFrame(ic_rows).sort_values("IC", key=abs, ascending=False)
-
-    # Apply filters
+    ic_all  = pd.DataFrame(ic_rows).sort_values("IC", key=abs, ascending=False)
     ic_filt = ic_all[
         (ic_all["IC"].abs()  >= min_ic)   &
         (ic_all["P-Value"]   <= max_pval) &
@@ -624,159 +644,168 @@ with tab4:
     kc2.metric("Pass filters",      len(ic_filt))
     kc3.metric("Positive IC",       int((ic_filt["IC"] > 0).sum()))
     kc4.metric("Negative IC",       int((ic_filt["IC"] < 0).sum()))
-    kc5.metric("Fwd return obs.",   len(df_ic))
+    kc5.metric("Observations",      len(df_ic))
 
-    # ── IC Table ──────────────────────────────────────────────────────────────
-    st.markdown('<div class="section-hd">Factor Predictability Table</div>', unsafe_allow_html=True)
-
+    # ── Table ─────────────────────────────────────────────────────────────────
+    st.markdown('<div class="section-hd">Factor Predictability Table — sorted by |IC|</div>',
+                unsafe_allow_html=True)
     if ic_filt.empty:
         st.info("No factors pass the current filters. Relax Min |IC|, Max p-value, or Min N.")
     else:
-        display_cols = ["Factor", "Group"]
-        if show_ic:   display_cols.append("IC")
-        if show_r2:   display_cols.append("R2")
-        if show_beta: display_cols.append("Beta")
-        if show_pval: display_cols.append("P-Value")
-        if show_n:    display_cols.append("N")
+        dcols = ["Factor", "Group"]
+        if show_ic:   dcols.append("IC")
+        if show_r2:   dcols.append("R2")
+        if show_beta: dcols.append("Beta")
+        if show_pval: dcols.append("P-Value")
+        if show_n:    dcols.append("N")
 
-        tbl = ic_filt[display_cols].copy()
-
-        # Colour IC column: green = positive signal, red = negative
-        def _ic_color(v):
+        def _ic_style(v):
             if not isinstance(v, float): return ""
-            if v >  0.10: return "color: #3fb950"
-            if v < -0.10: return "color: #f85149"
-            return "color: #8b949e"
+            if v >  0.10: return "color:#3fb950;font-weight:600"
+            if v < -0.10: return "color:#f85149;font-weight:600"
+            return "color:#8b949e"
 
-        styled = tbl.set_index("Factor").style
+        styled = ic_filt[dcols].set_index("Factor").style
         if show_ic:
-            styled = styled.map(_ic_color, subset=["IC"])
+            styled = styled.map(_ic_style, subset=["IC"])
         st.dataframe(styled, use_container_width=True)
 
     st.divider()
 
     # ── Deep Dive ─────────────────────────────────────────────────────────────
     st.markdown('<div class="section-hd">Factor Deep Dive</div>', unsafe_allow_html=True)
-
     if ic_all.empty:
-        st.info("No factors to analyse for the current selection.")
+        st.info("No factors to analyse. Expand factor groups or year range.")
         st.stop()
 
-    deep_options = ic_all["Factor"].tolist()
-    sel_label    = st.selectbox("Select factor to deep dive", deep_options, key="p2_deep")
-    sel_row      = ic_all[ic_all["Factor"] == sel_label].iloc[0]
-    sel_key      = sel_row["_key"]
-
+    sel_label = st.selectbox("Select factor to deep dive", ic_all["Factor"].tolist(), key="p2_deep")
+    sel_row   = ic_all[ic_all["Factor"] == sel_label].iloc[0]
+    sel_key   = sel_row["_key"]
     dd_ic, dd_r2, dd_beta, dd_pval, dd_n, dd_int = (
         sel_row["IC"], sel_row["R2"], sel_row["Beta"],
         sel_row["P-Value"], sel_row["N"], sel_row["_intercept"]
     )
 
-    # Significance label
-    if   dd_pval < 0.01: sig_str, chip_cls = "★★★  p < 0.01  (99% confidence)", "chip-g"
-    elif dd_pval < 0.05: sig_str, chip_cls = "★★   p < 0.05  (95% confidence)", "chip-g"
-    elif dd_pval < 0.10: sig_str, chip_cls = "★    p < 0.10  (90% confidence)", "chip-b"
-    else:                sig_str, chip_cls = "✗  Not statistically significant",  "chip-r"
+    if   dd_pval < 0.01: sig_str, sig_cls = "p < 0.01  (99% confidence)", "chip-g"
+    elif dd_pval < 0.05: sig_str, sig_cls = "p < 0.05  (95% confidence)", "chip-g"
+    elif dd_pval < 0.10: sig_str, sig_cls = "p < 0.10  (90% confidence)", "chip-b"
+    else:                sig_str, sig_cls = "Not statistically significant", "chip-r"
 
+    # Stat chips
     st.markdown(
-        f'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">'
+        f'<div class="p2-stat-row">'
         f'<span class="chip chip-g">IC = {dd_ic:+.4f}</span>'
-        f'<span class="chip chip-g">R² = {dd_r2:.4f}</span>'
+        f'<span class="chip chip-g">R2 = {dd_r2:.4f}</span>'
         f'<span class="chip chip-g">Beta = {dd_beta:+.6f}</span>'
         f'<span class="chip chip-b">N = {dd_n}</span>'
-        f'<span class="chip {chip_cls}">{sig_str}</span>'
+        f'<span class="chip {sig_cls}">{sig_str}</span>'
         f'</div>',
         unsafe_allow_html=True,
     )
 
-    dd_left, dd_right = st.columns([3, 2])
+    # R2 bar + Beta bar
+    r2_pct   = min(dd_r2 * 100, 100)
+    r2_col   = "#f0b429" if r2_pct < 10 else "#3fb950"
+    beta_ref = max(ic_all["Beta"].abs().max(), 0.001)
+    beta_pct = min(abs(dd_beta) / beta_ref * 50, 50)
+    beta_col = "#3fb950" if dd_beta >= 0 else "#f85149"
+    if dd_beta >= 0:
+        b_style = f"position:absolute;top:0;left:50%;height:8px;border-radius:0 3px 3px 0;width:{beta_pct:.1f}%;background:{beta_col};"
+    else:
+        b_style = f"position:absolute;top:0;left:{50-beta_pct:.1f}%;height:8px;border-radius:3px 0 0 3px;width:{beta_pct:.1f}%;background:{beta_col};"
 
-    with dd_left:
-        scat = df_ic[[sel_key, "Return_1Y_Fwd", "Company", "year"]].dropna()
-        x_min, x_max = scat[sel_key].min(), scat[sel_key].max()
-        reg_x = [x_min, x_max]
-        reg_y = [dd_int + dd_beta * x for x in reg_x]
+    st.markdown(
+        f'''<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:8px;">
+      <div>
+        <div style="font-size:0.65rem;color:#6e7681;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">
+          R2 Variance Explained &mdash; {r2_pct:.1f}%
+        </div>
+        <div class="p2-bar-track">
+          <div class="p2-bar-fill" style="width:{r2_pct:.1f}%;background:{r2_col};"></div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:0.65rem;color:#6e7681;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">
+          Beta Direction &amp; Magnitude &mdash; {dd_beta:+.4f}
+        </div>
+        <div class="p2-beta-wrap">
+          <div style="position:absolute;top:0;left:50%;width:1px;height:8px;background:#484f58;"></div>
+          <div style="{b_style}"></div>
+        </div>
+      </div>
+    </div>''',
+        unsafe_allow_html=True,
+    )
 
-        fig_sc = go.Figure()
-        fig_sc.add_trace(go.Scatter(
-            x=scat[sel_key], y=scat["Return_1Y_Fwd"],
-            mode="markers",
-            marker=dict(color="#3fb950", size=6, opacity=0.65),
-            customdata=scat[["Company", "year"]].values,
-            hovertemplate=(
-                "<b>%{customdata[0]}</b>  FY%{customdata[1]}<br>"
-                + sel_label + ": %{x:.3f}<br>"
-                "Fwd Return: %{y:.1f}%<extra></extra>"
-            ),
-            name="Observations",
-        ))
-        fig_sc.add_trace(go.Scatter(
-            x=reg_x, y=reg_y,
-            mode="lines",
-            line=dict(color="#f0b429", width=2),
-            name="Regression",
-        ))
-        fig_sc.add_hline(y=0, line_color="#484f58", line_dash="dot", line_width=1)
-        fig_sc.update_layout(
-            title=f"{sel_label}  ·  IC {dd_ic:+.4f}  ·  R² {dd_r2:.4f}",
-            height=420,
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#8b949e", size=10), showlegend=False,
-            xaxis=dict(title=sel_label, showgrid=True, gridcolor="#21262d"),
-            yaxis=dict(title="Forward Return (%)", showgrid=True, gridcolor="#21262d"),
-        )
-        st.plotly_chart(fig_sc, use_container_width=True)
+    # Scatter plot
+    scat = df_ic[[sel_key, "Return_1Y_Fwd", "Company", "year"]].dropna()
+    xmin, xmax = scat[sel_key].min(), scat[sel_key].max()
+    fig_sc = go.Figure()
+    fig_sc.add_trace(go.Scatter(
+        x=scat[sel_key], y=scat["Return_1Y_Fwd"],
+        mode="markers",
+        marker=dict(color="#3fb950", size=6, opacity=0.65),
+        customdata=scat[["Company", "year"]].values,
+        hovertemplate=(
+            "<b>%{customdata[0]}</b>  FY%{customdata[1]}<br>"
+            + sel_label + ": %{x:.3f}<br>Fwd Return: %{y:.1f}%<extra></extra>"
+        ),
+    ))
+    fig_sc.add_trace(go.Scatter(
+        x=[xmin, xmax],
+        y=[dd_int + dd_beta * xmin, dd_int + dd_beta * xmax],
+        mode="lines", line=dict(color="#f0b429", width=2),
+    ))
+    fig_sc.add_hline(y=0, line_color="#484f58", line_dash="dot", line_width=1)
+    fig_sc.update_layout(
+        title=f"{sel_label}  vs  Next-Year Return  |  IC {dd_ic:+.4f}  |  R2 {dd_r2:.4f}",
+        height=420, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#8b949e", size=10), showlegend=False,
+        xaxis=dict(title=sel_label, showgrid=True, gridcolor="#21262d"),
+        yaxis=dict(title="Forward Return (%)", showgrid=True, gridcolor="#21262d"),
+        margin=dict(l=0, r=0, t=40, b=0),
+    )
+    st.plotly_chart(fig_sc, use_container_width=True)
 
-    with dd_right:
-        st.markdown('<div class="section-hd">Interpretation</div>', unsafe_allow_html=True)
-        direction = "positively" if dd_ic > 0 else "negatively"
-        strength  = "strongly" if abs(dd_ic) > 0.20 else ("moderately" if abs(dd_ic) > 0.10 else "weakly")
+    # Interpretation box — below scatter
+    direction = "positively" if dd_ic > 0 else "negatively"
+    strength  = "strongly" if abs(dd_ic) > 0.20 else ("moderately" if abs(dd_ic) > 0.10 else "weakly")
+    st.markdown(
+        f'''<div class="p2-interp">
+      <p><b>{sel_label}</b> {strength} correlates {direction} with next-year returns in <b>{sector}</b>.</p>
+      <p><b>IC {dd_ic:+.4f}</b> &mdash; Direction and strength of factor-return relationship.
+         Benchmark: |IC| &gt; 0.05 = meaningful, &gt; 0.10 = strong signal worth trading.</p>
+      <p><b>R2 {dd_r2:.4f}</b> &mdash; This factor alone explains <b>{dd_r2*100:.1f}%</b> of
+         next-year return variance. Single factors rarely exceed 10-15% in practice.</p>
+      <p><b>Beta {dd_beta:+.6f}</b> &mdash; For every +1 unit in {sel_label},
+         next-year return changes by <b>{dd_beta:+.4f}%</b> on average (OLS regression slope).</p>
+      <p><b>p-value {dd_pval:.4f}</b> &mdash; {sig_str}. Based on <b>{dd_n}</b> company-year observations.</p>
+    </div>''',
+        unsafe_allow_html=True,
+    )
 
-        st.markdown(f"""
-**{sel_label}** {strength} correlates {direction} with next-year stock returns in **{sector}**.
-
----
-**IC = {dd_ic:+.4f}**
-Correlation between this factor and forward return. Quant threshold: |IC| > 0.05 is meaningful, > 0.10 is strong.
-
-**R² = {dd_r2:.4f}**
-This factor alone explains **{dd_r2*100:.1f}%** of next-year return variance. Single factors rarely exceed 10–15%.
-
-**Beta = {dd_beta:+.6f}**
-For every +1 unit in {sel_label}, next-year return changes by **{dd_beta:+.4f}%** on average.
-
-**p-value = {dd_pval:.4f}**
-{sig_str}. Based on {dd_n} observations.
-
----
-*IC > 0.10 with p < 0.05 = tradeable signal.*
-*IC consistent across years = reliable signal.*
-        """)
-
-    # ── Year-by-year IC chart ─────────────────────────────────────────────────
-    show_yy = st.checkbox("Show Year-by-Year IC Stability", value=True, key="p2_show_yy")
-
+    # Year-by-year IC stability
     if show_yy:
         st.markdown('<div class="section-hd">IC Stability Across Years</div>', unsafe_allow_html=True)
-
         yy_rows = []
         for yr in sorted(df_ic["year"].unique()):
             yd = df_ic[df_ic["year"] == yr][[sel_key, "Return_1Y_Fwd"]].dropna()
-            if len(yd) >= 4:
-                sl_y, _, r_y, pv_y, _ = _linregress(yd[sel_key], yd["Return_1Y_Fwd"])
-                yy_rows.append({"Year": str(int(yr)), "IC": round(r_y, 4), "p": round(pv_y, 4)})
+            if len(yd) >= 4 and yd[sel_key].nunique() >= 2:
+                try:
+                    _, _, r_y, _, _ = _linregress(yd[sel_key], yd["Return_1Y_Fwd"])
+                    yy_rows.append({"Year": str(int(yr)), "IC": round(r_y, 4)})
+                except Exception:
+                    pass
 
         if yy_rows:
-            yy_df    = pd.DataFrame(yy_rows)
-            mean_ic  = yy_df["IC"].mean()
-            pct_pos  = (yy_df["IC"] > 0).mean() * 100
-
-            fig_yy = go.Figure()
+            yy_df   = pd.DataFrame(yy_rows)
+            mean_ic = yy_df["IC"].mean()
+            pct_pos = (yy_df["IC"] > 0).mean() * 100
+            fig_yy  = go.Figure()
             fig_yy.add_trace(go.Bar(
                 x=yy_df["Year"], y=yy_df["IC"],
                 marker_color=["#3fb950" if v >= 0 else "#f85149" for v in yy_df["IC"]],
                 hovertemplate="FY%{x}<br>IC = %{y:.4f}<extra></extra>",
-                name="Annual IC",
             ))
             fig_yy.add_hline(y=0,       line_color="#484f58", line_dash="dot",   line_width=1)
             fig_yy.add_hline(y=mean_ic, line_color="#f0b429", line_dash="solid", line_width=2,
@@ -784,31 +813,24 @@ For every +1 unit in {sel_label}, next-year return changes by **{dd_beta:+.4f}%*
                              annotation_font_color="#f0b429",
                              annotation_position="top right")
             fig_yy.update_layout(
-                title=(f"Year-by-Year IC  ·  Positive in {pct_pos:.0f}% of years  ·  "
-                       f"Mean = {mean_ic:+.4f}"),
-                height=340,
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                title=f"Year-by-Year IC  |  Positive in {pct_pos:.0f}% of years  |  Mean = {mean_ic:+.4f}",
+                height=300, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                 font=dict(color="#8b949e", size=10), showlegend=False,
                 xaxis=dict(type="category", showgrid=False),
                 yaxis=dict(showgrid=True, gridcolor="#21262d", zeroline=False),
+                margin=dict(l=0, r=0, t=40, b=0),
             )
             st.plotly_chart(fig_yy, use_container_width=True)
 
-            # Consistency verdict
             if pct_pos >= 70 and abs(mean_ic) >= 0.05:
-                verdict = "Consistent signal. Positive IC in most years with meaningful average."
-                vcls    = "chip-g"
-            elif pct_pos <= 40 or abs(mean_ic) < 0.03:
-                verdict = "Inconsistent or weak signal. IC flips sign across years — unreliable."
-                vcls    = "chip-r"
+                verd, vcls = "Consistent signal — positive IC in most years.", "chip-g"
+            elif pct_pos <= 35 or abs(mean_ic) < 0.02:
+                verd, vcls = "Unreliable — IC flips sign. Not tradeable on its own.", "chip-r"
             else:
-                verdict = "Mixed signal. Use with caution alongside other factors."
-                vcls    = "chip-b"
-            st.markdown(f'<span class="chip {vcls}">{verdict}</span>', unsafe_allow_html=True)
+                verd, vcls = "Mixed — use alongside other factors.", "chip-b"
+            st.markdown(f'<span class="chip {vcls}">{verd}</span><br><br>', unsafe_allow_html=True)
 
     st.caption(
-        "IC = Pearson correlation between factor at year T and stock return during year T+1.  "
-        "R² = fraction of return variance explained by this factor alone.  "
-        "Beta = OLS slope (magnitude of return impact per unit of factor).  "
-        "Yellow line = mean IC across all years (overall signal direction)."
+        "IC = Pearson correlation (factor year T vs return year T+1). "
+        "R2 = variance explained. Beta = OLS slope. Yellow line = mean IC across all years."
     )
