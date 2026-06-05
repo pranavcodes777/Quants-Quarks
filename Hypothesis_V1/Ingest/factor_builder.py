@@ -352,6 +352,28 @@ def build_sector_factors(sectors: list[str] | None = None) -> pd.DataFrame:
     return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
 
 
+def merge_forward_returns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Join 1-year forward return onto the factor dataset.
+    Factor at year T  ->  Return_1Y_Fwd = stock return during year T+1
+    (buy at end of March T, sell at end of March T+1)
+    """
+    ret_path = os.path.join(OUTPUT_DIR, "returns.parquet")
+    if not os.path.exists(ret_path):
+        print("  Warning: returns.parquet not found — run return_builder.py first")
+        return df
+
+    returns = pd.read_parquet(ret_path)
+    # Shift: align return of year T+1 with factor year T
+    returns = returns.copy()
+    returns["year"] = returns["year"] - 1
+    returns = returns.rename(columns={"Return_1Y": "Return_1Y_Fwd"})
+    merged = df.merge(returns, on=["Company", "year"], how="left")
+    n_fwd = merged["Return_1Y_Fwd"].notna().sum()
+    print(f"  Forward returns matched: {n_fwd} of {len(merged)} rows")
+    return merged
+
+
 if __name__ == "__main__":
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     sectors = sys.argv[1:] if len(sys.argv) > 1 else None
@@ -365,10 +387,11 @@ if __name__ == "__main__":
         print("No data. Check source paths.")
         sys.exit(1)
 
+    df  = merge_forward_returns(df)
     out = os.path.join(OUTPUT_DIR, "bs_factors.parquet")
     df.to_parquet(out, index=False)
 
-    factor_cols = [c for c in df.columns if c not in ("year", "Company", "Sector")]
+    factor_cols = [c for c in df.columns if c not in ("year", "Company", "Sector", "Return_1Y_Fwd")]
     print(f"  Rows      : {len(df)}")
     print(f"  Companies : {df['Company'].nunique()}")
     print(f"  Sectors   : {df['Sector'].nunique()}")

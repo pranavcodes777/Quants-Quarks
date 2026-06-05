@@ -260,7 +260,7 @@ st.markdown(f"""
 
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3 = st.tabs(["  Correlation Matrix  ", "  Factor Explorer  ", "  Company Snapshot  "])
+tab1, tab2, tab3, tab4 = st.tabs(["  Correlation Matrix  ", "  Factor Explorer  ", "  Company Snapshot  ", "  Factor Predictability  "])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -566,3 +566,95 @@ with tab3:
     hist.index = [FACTOR_META[f]["label"] for f in hist.index]
     hist = hist.round(3)
     st.dataframe(hist, use_container_width=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 4 — Factor Predictability (Phase 2: Information Coefficient)
+# ══════════════════════════════════════════════════════════════════════════════
+with tab4:
+    st.markdown("## Which factors predict future returns?", unsafe_allow_html=True)
+
+    # Filter to rows with forward returns
+    df_ic = df[df["Return_1Y_Fwd"].notna()].copy()
+    if df_ic.empty:
+        st.warning("No forward return data available.")
+        st.stop()
+
+    n_obs = len(df_ic)
+
+    # Compute Information Coefficient (IC) = correlation with forward returns
+    ic_results = []
+    for f in avail:
+        if f in df_ic.columns:
+            valid = df_ic[[f, "Return_1Y_Fwd"]].dropna()
+            if len(valid) > 1:
+                corr = valid[f].corr(valid["Return_1Y_Fwd"])
+                pval = stats.pearsonr(valid[f], valid["Return_1Y_Fwd"])[1]
+                ic_results.append({
+                    "Factor": FACTOR_META[f]["label"],
+                    "Group": FACTOR_META[f]["group"],
+                    "IC": round(corr, 4),
+                    "P-Value": round(pval, 4),
+                    "Significant": "Yes" if pval < 0.05 else "No",
+                    "N": len(valid),
+                })
+
+    ic_df = pd.DataFrame(ic_results).sort_values("IC", key=abs, ascending=False)
+
+    # Display IC table
+    st.markdown('<div class="section-hd">Information Coefficient — All Factors</div>', unsafe_allow_html=True)
+    col_ic1, col_ic2 = st.columns([3, 1])
+    with col_ic1:
+        st.dataframe(ic_df.set_index("Factor"), use_container_width=True)
+    with col_ic2:
+        sig_count = (ic_df["P-Value"] < 0.05).sum()
+        st.metric("Significant Factors", f"{sig_count}/{len(ic_df)}", help="p < 0.05")
+
+    # Scatter plot: selected factor vs forward return
+    st.markdown('<div class="section-hd">Scatter: Factor vs Forward Return</div>', unsafe_allow_html=True)
+    sel_factor_ic = st.selectbox(
+        "Select factor", [r["Factor"] for _, r in ic_df.iterrows()],
+        help="Visualize relationship between factor and next year's return",
+        key="ic_scatter"
+    )
+    sel_factor_key = [k for k, v in FACTOR_META.items() if v["label"] == sel_factor_ic][0]
+
+    scatter_data = df_ic[[sel_factor_key, "Return_1Y_Fwd", "Company"]].dropna()
+    fig_scatter = px.scatter(
+        scatter_data,
+        x=sel_factor_key, y="Return_1Y_Fwd",
+        hover_data=["Company"],
+        labels={sel_factor_key: FACTOR_META[sel_factor_key]["label"], "Return_1Y_Fwd": "Forward Return (%)"},
+        title=f"{FACTOR_META[sel_factor_key]['label']} vs Next Year Return",
+        color_discrete_sequence=["#3fb950"],
+    )
+    fig_scatter.add_shape(type="line", x0=scatter_data[sel_factor_key].min(), x1=scatter_data[sel_factor_key].max(),
+                          y0=0, y1=0, line=dict(color="#484f58", dash="dot", width=1))
+    fig_scatter.update_layout(
+        height=400, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#8b949e", size=10), showlegend=False,
+    )
+    st.plotly_chart(fig_scatter, use_container_width=True)
+
+    # Year-by-year IC
+    st.markdown('<div class="section-hd">Year-by-Year IC — Stability Check</div>', unsafe_allow_html=True)
+    ic_by_year = []
+    for year in sorted(df_ic["year"].unique()):
+        year_data = df_ic[df_ic["year"] == year][[sel_factor_key, "Return_1Y_Fwd"]].dropna()
+        if len(year_data) > 1:
+            ic = year_data[sel_factor_key].corr(year_data["Return_1Y_Fwd"])
+            ic_by_year.append({"Year": year, "IC": round(ic, 4)})
+
+    ic_year_df = pd.DataFrame(ic_by_year)
+    fig_ic_year = px.bar(ic_year_df, x="Year", y="IC", color="IC",
+                         color_continuous_scale=["#f85149", "#484f58", "#3fb950"],
+                         title="IC Stability Across Years (Predictive Power)")
+    fig_ic_year.add_hline(y=0, line_dash="dash", line_color="#484f58")
+    fig_ic_year.update_layout(
+        height=350, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#8b949e", size=10), showlegend=False,
+        xaxis_type="category",
+    )
+    st.plotly_chart(fig_ic_year, use_container_width=True)
+
+    st.caption(f"Based on {n_obs} observations ({sorted(df_ic['year'].unique())[0]}–{sorted(df_ic['year'].unique())[-1]}). IC = Correlation with forward annual return. Year-by-year IC shows if factor's predictive power is consistent or lucky once.")
