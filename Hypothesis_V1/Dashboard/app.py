@@ -128,12 +128,18 @@ GROUP_COLORS = {
 
 
 # ── Data loading ───────────────────────────────────────────────────────────────
-@st.cache_data(show_spinner="Loading data…", ttl=3600)
-def _load_all() -> pd.DataFrame:
+def _parquet_hash() -> str:
+    import hashlib
+    with open(_DB_PATH, "rb") as f:
+        return hashlib.md5(f.read(4096)).hexdigest()
+
+@st.cache_data(show_spinner="Loading data…")
+def _load_all(file_hash: str) -> pd.DataFrame:
     return pd.read_parquet(_DB_PATH)
 
 def load_data(sector: str) -> pd.DataFrame:
-    return _load_all()[_load_all()["Sector"] == sector].copy()
+    df = _load_all(_parquet_hash())
+    return df[df["Sector"] == sector].copy()
 
 
 # ── Correlation helpers ────────────────────────────────────────────────────────
