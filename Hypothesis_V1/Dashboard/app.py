@@ -115,19 +115,103 @@ FACTOR_META: dict[str, dict] = {
     "Receivables_to_Assets":    {"label": "Receivables / Assets",    "group": "Efficiency",    "desc": "Trade receivables as % of total assets. High = customers slow to pay."},
     "Cash_to_Assets":           {"label": "Cash / Assets",           "group": "Liquidity",     "desc": "Cash & equivalents as % of total assets. High = strong liquidity buffer."},
     "TradePayables_to_Assets":  {"label": "Trade Payables / Assets", "group": "Efficiency",    "desc": "Trade payables as % of total assets. High = company relies heavily on supplier credit."},
+
+    # ── Cost Structure (from expanded P&L) ──────────────────────────────────────
+    "Material_Cost_Pct":      {"label": "Material Cost %",       "group": "Cost Structure",  "desc": "Raw material cost as % of sales. Directly from expanded P&L. High = input-cost sensitive; margins compress when commodity prices rise."},
+    "Employee_Cost_Pct":      {"label": "Employee Cost %",       "group": "Cost Structure",  "desc": "Employee cost as % of sales. High = labour-intensive business model. IT services companies typically run 50-60%."},
+    "Manufacturing_Cost_Pct": {"label": "Manufacturing Cost %",  "group": "Cost Structure",  "desc": "Manufacturing overhead (power, consumables, rent) as % of sales. Represents fixed cost intensity."},
+    "Other_Cost_Pct":         {"label": "Other Cost %",          "group": "Cost Structure",  "desc": "SG&A and miscellaneous costs as % of sales. Includes distribution, marketing, admin."},
+    "Employee_Productivity":  {"label": "Employee Productivity", "group": "Cost Structure",  "desc": "Revenue per rupee of employee cost. Higher = more revenue generated per unit of labour spend."},
+
+    # ── Earnings Quality (PL + CF cross) ────────────────────────────────────────
+    "Other_Income_to_OP":     {"label": "Other Income / Op Profit %",  "group": "Earnings Quality", "desc": "Other (non-operating) income as % of operating profit. High = profits rely on interest/dividends/asset sales, not core business."},
+    "Other_Income_to_NP":     {"label": "Other Income / Net Profit %", "group": "Earnings Quality", "desc": "What % of net profit comes from non-core sources. >30% is a quality red flag."},
+    "Core_EBIT_Purity":       {"label": "Core EBIT Purity %",          "group": "Earnings Quality", "desc": "Operating profit as % of PBT. Measures how much of pre-tax profit is from core operations vs other income."},
+    "Profit_Quality":         {"label": "Profit Quality",               "group": "Earnings Quality", "desc": "Profit excl. exceptionals / Reported net profit. 1.0 = clean earnings. <1 = exceptional items dragged profit; >1 = exceptional items inflated it."},
+    "Exceptional_to_NP":      {"label": "Exceptional Items / NP %",    "group": "Earnings Quality", "desc": "Size of exceptional items relative to net profit. High and recurring = noisy earnings; management using exceptionals to manage expectations."},
+    "Effective_Tax_Rate":     {"label": "Effective Tax Rate %",         "group": "Earnings Quality", "desc": "Actual tax rate paid as % of PBT. Below statutory rate = deferred tax benefits, MAT credits, or tax-efficient structure."},
+    "Dividend_Payout":        {"label": "Dividend Payout %",            "group": "Earnings Quality", "desc": "Dividends paid as % of net profit. High = mature, cash-generative business returning capital. Very high (>100%) = paying from reserves."},
+    "EPS_Growth":             {"label": "EPS Growth %",                 "group": "Earnings Quality", "desc": "Year-on-year growth in EPS (dilution-adjusted). Better than raw net profit growth as it accounts for share issuance/buybacks."},
+    "Minority_Earnings_Drag": {"label": "Minority Earnings Drag %",     "group": "Earnings Quality", "desc": "Minority interest as % of PBT. High = significant earnings leak to minority shareholders of subsidiaries."},
+    "Recurring_NP_Margin":    {"label": "Recurring NP Margin %",        "group": "Earnings Quality", "desc": "Net profit excluding exceptional items / sales. The cleanest measure of true recurring profitability."},
+    "CFO_to_OP":              {"label": "CFO / Operating Profit",       "group": "Earnings Quality", "desc": "Cash from operations / Operating profit. >1 = operating cash exceeds accounting profit (conservative accounting). Best near-term earnings quality test."},
+    "Accrual_Ratio":          {"label": "Accrual Ratio %",              "group": "Earnings Quality", "desc": "Sloan Accrual Ratio: (Net Profit - CFO) / Sales. Positive = earnings running ahead of cash (accrual inflation). Empirically one of the strongest reversal predictors."},
+
+    # ── Cash Flow Quality ────────────────────────────────────────────────────────
+    "WC_Change_to_CFO":       {"label": "WC Change / CFO",          "group": "CF Quality", "desc": "Working capital changes / CFO. Negative = WC consumed cash (receivables/inventory grew faster than payables). HUL famously has strongly positive WC (negative WC company)."},
+    "Receivables_Drag":       {"label": "Receivables Change / Sales %", "group": "CF Quality", "desc": "Change in trade receivables as % of sales (from CF working capital section). Rising = customers paying slower, credit risk building."},
+    "Inventory_Drag":         {"label": "Inventory Change / Sales %",   "group": "CF Quality", "desc": "Change in inventory as % of sales. Positive = inventory building up, cash absorbed. Warning sign if persistent."},
+    "Payables_Support":       {"label": "Payables Change / Sales %",    "group": "CF Quality", "desc": "Change in trade payables as % of sales. Positive = stretching suppliers, freeing cash. Negative = paying suppliers faster (possible coercion or opportunity cost)."},
+    "Net_Capex_Ratio":        {"label": "Net Capex / Sales %",          "group": "CF Quality", "desc": "Fixed assets purchased minus sold, as % of sales. True economic capex excluding asset recycling. More accurate than gross capex."},
+    "Asset_Disposal_Rate":    {"label": "Asset Disposal Rate",          "group": "CF Quality", "desc": "Fixed assets sold / Fixed assets purchased. >0 = actively recycling old assets. Near 1 = replacement capex cycle; very high = asset-light pivot or distress."},
+    "Net_Fin_Investment":     {"label": "Net Financial Investment / Sales %", "group": "CF Quality", "desc": "Net investments purchased (financial, not capex) as % of sales. High positive = building treasury / M&A. High negative = liquidating investments."},
+    "Acquisition_Intensity":  {"label": "Acquisition Intensity / Sales %",   "group": "CF Quality", "desc": "Cash paid for acquisitions / sales. Measures inorganic growth activity. High = serial acquirer; quality depends on whether ROIC improves."},
+    "Investment_Income_Yield":{"label": "Investment Income Yield %",    "group": "CF Quality", "desc": "(Interest + Dividends received) / Total investments. Return on the financial investment portfolio. Useful for conglomerates and cash-rich companies."},
+    "Financing_Dependency":   {"label": "Financing CF / Sales %",       "group": "CF Quality", "desc": "Cash from financing activities / sales. Negative = company returned cash to providers (dividends + buybacks > new debt). Positive = net fundraiser."},
+    "Buyback_Intensity":      {"label": "Buyback / Equity %",           "group": "CF Quality", "desc": "Cash returned via share buybacks / total equity. Rising buybacks often signal management confidence and reduce dilution."},
+    "FCF_to_Debt":            {"label": "FCF / Total Debt",             "group": "CF Quality", "desc": "Free cash flow coverage of total debt. How many years of FCF to repay all debt. >0.25 = strong debt coverage."},
+    "Net_Debt_to_EBITDA":     {"label": "Net Debt / EBITDA",            "group": "CF Quality", "desc": "Most widely used credit leverage metric. <2x = conservatively financed; >4x = highly levered. Negative = net cash company."},
+    "Debt_to_EBITDA":         {"label": "Debt / EBITDA",                "group": "CF Quality", "desc": "Gross debt / EBITDA. Similar to Net Debt/EBITDA but ignores cash. Used when cash is restricted or deployment is uncertain."},
+    "Interest_to_CFO":        {"label": "Interest / CFO",               "group": "CF Quality", "desc": "Cash interest burden as % of operating cash flow. >0.3 = significant portion of operating cash servicing debt."},
+    "Cash_Tax_Rate":          {"label": "Cash Tax Rate %",              "group": "CF Quality", "desc": "Taxes actually paid in cash (from CF) / PBT. Much lower than book tax rate = large deferred tax assets being utilised. Higher = limited tax shield."},
+    "Depreciation_Coverage":  {"label": "Depreciation Coverage",        "group": "CF Quality", "desc": "CFO / Depreciation. >1 = operating cash covers asset wear-and-tear. <1 = company can't fund replacement capex from operations alone."},
+    "CFO_Growth":             {"label": "CFO Growth %",                 "group": "CF Quality", "desc": "Year-on-year growth in cash from operations. More reliable than net profit growth as it strips accounting adjustments."},
+    "FCF_Growth":             {"label": "FCF Growth %",                 "group": "CF Quality", "desc": "Year-on-year growth in free cash flow. The cleanest measure of value creation momentum."},
+
+    # ── Capital Allocation ───────────────────────────────────────────────────────
+    "ROIC":             {"label": "ROIC %",              "group": "Capital Allocation", "desc": "Return on Invested Capital = NOPAT / (Equity + Net Debt). The best single metric for long-run value creation. Companies with ROIC > WACC destroy less value compounding at reinvestment."},
+    "Reinvestment_Rate":{"label": "Reinvestment Rate",   "group": "Capital Allocation", "desc": "(Capex + WC investment) / NOPAT. How much of after-tax operating profit is reinvested. High + high ROIC = compounding machine. High + low ROIC = value destruction."},
+    "FCF_Conversion":   {"label": "FCF Conversion %",    "group": "Capital Allocation", "desc": "FCF / NOPAT × 100. How efficiently NOPAT converts to free cash. 100% = perfect; <50% = heavy reinvestment or working capital drag; >100% = releasing WC."},
+    "Cash_Accumulation":{"label": "Cash Accumulation / Sales %", "group": "Capital Allocation", "desc": "Net cash flow / sales. Positive = building cash reserves (either conservative or waiting to deploy). Persistent negative = cash-burning business model."},
+    "ROIC_Growth":      {"label": "ROIC Growth %",       "group": "Capital Allocation", "desc": "Year-on-year change in ROIC. Rising ROIC = improving capital efficiency — the compounding driver of long-run returns."},
+
+    # ── Consistency & Trend ──────────────────────────────────────────────────────
+    "Revenue_CAGR_5Y":    {"label": "Revenue CAGR 5Y %",      "group": "Consistency", "desc": "5-year compound annual growth in revenue. Removes one-year volatility; shows the sustained growth trajectory."},
+    "NP_CAGR_5Y":         {"label": "Net Profit CAGR 5Y %",   "group": "Consistency", "desc": "5-year CAGR in net profit. Only computed when profit is positive throughout. Shows compounding of the bottom line."},
+    "EPS_CAGR_5Y":        {"label": "EPS CAGR 5Y %",          "group": "Consistency", "desc": "5-year CAGR in earnings per share. Better than net profit CAGR as it reflects dilution from share issuance."},
+    "OPM_Stability":      {"label": "OPM Stability",          "group": "Consistency", "desc": "Negated 3-year rolling std of operating margin. Higher = more stable margins = pricing power or cost discipline. Low = volatile/cyclical."},
+    "ROE_Stability":      {"label": "ROE Stability",          "group": "Consistency", "desc": "Negated 3-year rolling std of ROE. Higher = more consistent returns. Buffett's key quality screen — stable high ROE compounds extremely well."},
+    "OPM_Trend":          {"label": "OPM Trend (slope)",      "group": "Consistency", "desc": "OLS slope of operating margin over last 4 years. Positive = margins expanding. One of the strongest momentum signals in fundamental analysis."},
+    "ROE_Trend":          {"label": "ROE Trend (slope)",      "group": "Consistency", "desc": "OLS slope of ROE over last 4 years. Rising ROE = improving capital efficiency — stock market eventually reprices this."},
+    "Margin_Expansion_3Y":{"label": "Margin Expansion 3Y pp", "group": "Consistency", "desc": "Operating margin now minus operating margin 3 years ago (in percentage points). Positive = structural margin expansion underway."},
+    "FCF_Reliability":    {"label": "FCF Reliability %",      "group": "Consistency", "desc": "% of last 5 years with positive FCF. 100% = always generated free cash. <60% = FCF generation is lumpy or unreliable."},
+
+    # ── Detailed Asset Mix ───────────────────────────────────────────────────────
+    "Intangible_Ratio":       {"label": "Intangible / Assets %",        "group": "Asset Detail", "desc": "Intangible assets (brand, patents, goodwill) as % of total assets. High for IT/Pharma/FMCG = significant intellectual property on books."},
+    "Lease_Intensity":        {"label": "Lease Liabilities / Assets %", "group": "Asset Detail", "desc": "Lease liabilities (Ind AS 116) as % of total assets. High = significant operational leverage from leases not captured in traditional debt ratios."},
+    "Lease_to_Equity":        {"label": "Lease / Equity",               "group": "Asset Detail", "desc": "Lease liabilities relative to equity. Adds hidden leverage to D/E for capital-intensive leasing businesses (retail, airlines, telecom)."},
+    "Land_to_GrossBlock":     {"label": "Land / Gross Block %",         "group": "Asset Detail", "desc": "Land as % of gross block. Land doesn't depreciate — high land ratio = hidden asset value often understated on books."},
+    "Plant_to_GrossBlock":    {"label": "Plant & Mach / Gross Block %", "group": "Asset Detail", "desc": "Plant & machinery as % of gross block. High = heavy manufacturing intensity. Useful for identifying capital-intensive within-sector leaders."},
+    "Net_Block_Freshness":    {"label": "Asset Freshness",              "group": "Asset Detail", "desc": "1 - (Accumulated Depreciation / Gross Block). Near 1 = brand new assets. Near 0 = fully depreciated, capex cycle imminent. Low freshness often precedes heavy capex."},
+    "Gross_Block_Growth":     {"label": "Gross Block Growth %",         "group": "Asset Detail", "desc": "Year-on-year growth in gross block. Directly measures the pace of physical asset accumulation — raw proxy for capacity expansion."},
+    "Advance_from_Customers": {"label": "Customer Advances / Sales %",  "group": "Asset Detail", "desc": "Advance payments from customers / sales. High = strong pricing power (customers pay upfront). Creates negative working capital — companies like ITC, IRCTC have this."},
+    "Minority_Interest_Ratio":{"label": "Minority Interest / Equity %", "group": "Asset Detail", "desc": "Non-controlling interests as % of total equity. High = significant subsidiary exposure; consolidated profits partially owned by others."},
+
+    # ── Quarterly Dynamics ───────────────────────────────────────────────────────
+    "Revenue_Seasonality":      {"label": "Revenue Seasonality CV %",    "group": "Quarterly", "desc": "Coefficient of variation of quarterly revenues (std/mean × 100). High = business is highly seasonal (IRCTC, festive-driven). Low = steady demand."},
+    "OPM_Quarterly_Vol":        {"label": "Quarterly OPM Volatility",    "group": "Quarterly", "desc": "Standard deviation of quarterly operating margins over ~3 years. High = margins fluctuate significantly quarter to quarter."},
+    "Qtr_Profit_Consistency":   {"label": "Quarterly Profit Consistency %","group": "Quarterly", "desc": "% of recent quarters with positive net profit. 100% = never had a loss quarter. Useful for screening cyclical vs defensive businesses."},
+    "Recent_Revenue_Momentum":  {"label": "Recent Revenue Momentum %",   "group": "Quarterly", "desc": "Year-on-year revenue growth in the most recent quarter. Near-term momentum signal — captures current business velocity before annual data is available."},
 }
 
 FACTOR_COLS  = list(FACTOR_META.keys())
 GROUP_COLORS = {
-    "Leverage":     "#f85149",
-    "Asset Mix":    "#58a6ff",
-    "Profitability":"#f0b429",
-    "Growth":       "#3fb950",
-    "Cash Quality": "#79c0ff",
-    "Size":         "#d2a8ff",
-    "Efficiency":   "#a5d6ff",
-    "Capex":        "#ffa657",
-    "Liquidity":    "#56d364",
+    "Leverage":          "#f85149",
+    "Asset Mix":         "#58a6ff",
+    "Profitability":     "#f0b429",
+    "Growth":            "#3fb950",
+    "Cash Quality":      "#79c0ff",
+    "Size":              "#d2a8ff",
+    "Efficiency":        "#a5d6ff",
+    "Capex":             "#ffa657",
+    "Liquidity":         "#56d364",
+    "Cost Structure":    "#ff9500",
+    "Earnings Quality":  "#c3e88d",
+    "CF Quality":        "#4fc3f7",
+    "Capital Allocation":"#ce93d8",
+    "Consistency":       "#80cbc4",
+    "Asset Detail":      "#90caf9",
+    "Quarterly":         "#ffcc02",
 }
 
 
