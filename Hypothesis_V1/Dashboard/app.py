@@ -649,291 +649,355 @@ with tab3:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 4 — Factor Predictability  (Phase 2)
+# TAB 4 — Factor Predictability  (Cross-Sectional Rank IC)
 # ══════════════════════════════════════════════════════════════════════════════
 with tab4:
 
     st.markdown("""<style>
     .p2-bar-track{background:#21262d;border-radius:4px;height:8px;width:100%;margin:4px 0 10px;}
     .p2-bar-fill{height:8px;border-radius:4px;}
-    .p2-beta-wrap{position:relative;height:8px;background:#21262d;border-radius:4px;margin:4px 0 10px;}
+    .p2-mid-wrap{position:relative;height:8px;background:#21262d;border-radius:4px;margin:4px 0 10px;}
     .p2-interp{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px 20px;margin-top:14px;}
     .p2-interp p{margin:0 0 8px;font-size:0.82rem;color:#8b949e;line-height:1.7;}
     .p2-interp b{color:#e6edf3;}
     .p2-stat-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
     </style>""", unsafe_allow_html=True)
 
-    # ── Row 1: Factor groups + stability toggle ───────────────────────────────
-    r1a, r1b = st.columns([4, 1])
-    with r1a:
-        st.markdown('<div class="section-hd">Factor Groups to Analyse</div>', unsafe_allow_html=True)
-        all_grps_p2 = list(dict.fromkeys(FACTOR_META[f]["group"] for f in avail if f in FACTOR_META))
-        sel_grps_p2 = st.multiselect("p2g", all_grps_p2, default=all_grps_p2,
-                                      label_visibility="collapsed", key="p2_groups")
-    with r1b:
-        st.markdown('<div class="section-hd">Stability Chart</div>', unsafe_allow_html=True)
-        show_yy = st.checkbox("Year-by-Year IC", value=True, key="p2_show_yy")
+    # ── Factor group selector ─────────────────────────────────────────────────
+    st.markdown('<div class="section-hd">Factor Groups to Analyse</div>', unsafe_allow_html=True)
+    all_grps_p2 = list(dict.fromkeys(FACTOR_META[f]["group"] for f in avail if f in FACTOR_META))
+    sel_grps_p2 = st.multiselect("p2g", all_grps_p2, default=all_grps_p2,
+                                  label_visibility="collapsed", key="p2_groups")
+    p2_factors  = [f for f in avail if FACTOR_META.get(f, {}).get("group") in sel_grps_p2]
 
-    p2_factors = [f for f in avail if FACTOR_META.get(f, {}).get("group") in sel_grps_p2]
-
-    # ── Row 2: Filters | Column toggles ──────────────────────────────────────
+    # ── Filters + column toggles ──────────────────────────────────────────────
     r2a, r2b = st.columns([3, 2])
     with r2a:
         st.markdown('<div class="section-hd">Filters</div>', unsafe_allow_html=True)
         f1, f2, f3 = st.columns(3)
         with f1:
-            min_ic   = st.slider("Min |IC|",    0.00, 0.30, 0.00, 0.01, key="p2_min_ic",
-                                  help="|IC| = correlation strength. 0.10+ is meaningful.")
+            min_ic   = st.slider("Min |Mean IC|", 0.00, 0.40, 0.00, 0.01, key="p2_min_ic",
+                                  help="|Mean IC| across years. >0.05 = meaningful, >0.10 = strong.")
         with f2:
-            max_pval = st.slider("Max p-value", 0.01, 0.20, 0.10, 0.01, key="p2_max_p",
-                                  help="0.05 = 95% confidence the signal is real.")
+            max_pval = st.slider("Max p-value",   0.01, 0.20, 0.10, 0.01, key="p2_max_p",
+                                  help="t-test on IC time series. p<0.05 = signal is real.")
         with f3:
-            min_n    = st.slider("Min N",       10,   300,  30,   10,   key="p2_min_n",
-                                  help="Min observations. Larger N = more trustworthy.")
+            min_n    = st.slider("Min Years",      2,    12,   3,    1,    key="p2_min_n",
+                                  help="Minimum years with valid cross-sectional data.")
     with r2b:
         st.markdown('<div class="section-hd">Table Columns</div>', unsafe_allow_html=True)
         tc1, tc2, tc3 = st.columns(3)
         with tc1:
-            show_ic   = st.checkbox("IC",      value=True,  key="p2_show_ic")
-            show_r2   = st.checkbox("R2",      value=True,  key="p2_show_r2")
+            show_mean_ic  = st.checkbox("Mean IC",  value=True,  key="p2_show_ic")
+            show_ic_ir    = st.checkbox("IC-IR",    value=True,  key="p2_show_icir")
         with tc2:
-            show_beta = st.checkbox("Beta",    value=True,  key="p2_show_beta")
-            show_pval = st.checkbox("P-Value", value=True,  key="p2_show_pval")
+            show_hit_rate = st.checkbox("Hit Rate", value=True,  key="p2_show_hr")
+            show_pval     = st.checkbox("p-value",  value=True,  key="p2_show_pval")
         with tc3:
-            show_n    = st.checkbox("N",       value=True,  key="p2_show_n")
+            show_nyears   = st.checkbox("N Years",  value=True,  key="p2_show_n")
+            show_range    = st.checkbox("IC Range", value=False, key="p2_show_range")
 
     st.divider()
 
-    # ── Data & computation ────────────────────────────────────────────────────
+    # ── Data check ────────────────────────────────────────────────────────────
     df_ic = df[df["Return_1Y_Fwd"].notna()].copy() if "Return_1Y_Fwd" in df.columns else pd.DataFrame()
     if df_ic.empty:
         st.warning("No forward return data available for this sector / year range.")
         st.stop()
 
+    # ── Compute year-by-year cross-sectional Rank IC ──────────────────────────
     ic_rows = []
     for f in p2_factors:
-        valid = df_ic[[f, "Return_1Y_Fwd"]].dropna()
-        n = len(valid)
-        if n < 5 or valid[f].nunique() < 2:
+        if f not in df_ic.columns or f not in FACTOR_META:
             continue
+        ic_by_year = {}
+        for yr in sorted(df_ic["year"].unique()):
+            yr_df = df_ic[df_ic["year"] == yr][[f, "Return_1Y_Fwd"]].dropna()
+            if len(yr_df) < 3 or yr_df[f].nunique() < 2:
+                continue
+            try:
+                corr, _ = stats.spearmanr(yr_df[f], yr_df["Return_1Y_Fwd"])
+                if not np.isnan(corr):
+                    ic_by_year[yr] = float(corr)
+            except Exception:
+                pass
+
+        if len(ic_by_year) < 2:
+            continue
+
+        ic_vals  = list(ic_by_year.values())
+        mean_ic  = float(np.mean(ic_vals))
+        std_ic   = float(np.std(ic_vals, ddof=1))
+        n_years  = len(ic_vals)
+        ic_ir    = mean_ic / std_ic if std_ic > 0 else 0.0
+        hit_rate = sum(1 for v in ic_vals if v > 0) / n_years * 100
+        t_stat   = mean_ic / (std_ic / np.sqrt(n_years)) if std_ic > 0 else np.nan
         try:
-            slope, intercept, r, pval, _ = _linregress(valid[f], valid["Return_1Y_Fwd"])
+            p_val = float(2 * stats.t.sf(abs(t_stat), df=n_years - 1))
         except Exception:
-            continue
+            p_val = np.nan
+
         ic_rows.append({
-            "_key": f,
-            "Factor":  FACTOR_META[f]["label"],
-            "Group":   FACTOR_META[f]["group"],
-            "IC":      round(r,       4),
-            "R2":      round(r ** 2,  4),
-            "Beta":    round(slope,   6),
-            "P-Value": round(pval,    4),
-            "N":       n,
-            "_intercept": intercept,
+            "_key":        f,
+            "Factor":      FACTOR_META[f]["label"],
+            "Group":       FACTOR_META[f]["group"],
+            "Mean IC":     round(mean_ic,  4),
+            "IC-IR":       round(ic_ir,    3),
+            "Hit Rate":    round(hit_rate, 1),
+            "N Years":     n_years,
+            "p-value":     round(p_val, 4) if not np.isnan(p_val) else np.nan,
+            "Min IC":      round(min(ic_vals), 4),
+            "Max IC":      round(max(ic_vals), 4),
+            "_ic_by_year": ic_by_year,
         })
 
-    ic_all  = pd.DataFrame(ic_rows).sort_values("IC", key=abs, ascending=False)
+    ic_all = (pd.DataFrame(ic_rows).sort_values("Mean IC", key=abs, ascending=False)
+              if ic_rows else pd.DataFrame())
+
+    if ic_all.empty:
+        st.info("No factors with enough cross-sectional data. Try expanding year range or factor groups.")
+        st.stop()
+
     ic_filt = ic_all[
-        (ic_all["IC"].abs()  >= min_ic)   &
-        (ic_all["P-Value"]   <= max_pval) &
-        (ic_all["N"]         >= min_n)
+        (ic_all["Mean IC"].abs() >= min_ic)  &
+        (ic_all["p-value"]       <= max_pval) &
+        (ic_all["N Years"]       >= min_n)
     ].copy()
 
     # ── KPI strip ─────────────────────────────────────────────────────────────
     kc1, kc2, kc3, kc4, kc5 = st.columns(5)
     kc1.metric("Factors analysed",  len(ic_all))
     kc2.metric("Pass filters",      len(ic_filt))
-    kc3.metric("Positive IC",       int((ic_filt["IC"] > 0).sum()))
-    kc4.metric("Negative IC",       int((ic_filt["IC"] < 0).sum()))
-    kc5.metric("Observations",      len(df_ic))
+    kc3.metric("Positive Mean IC",  int((ic_filt["Mean IC"] > 0).sum()))
+    kc4.metric("IC-IR > 1.0",       int((ic_filt["IC-IR"].abs() > 1.0).sum()))
+    kc5.metric("Hit Rate > 60%",    int((ic_filt["Hit Rate"] > 60).sum()))
 
     # ── Table ─────────────────────────────────────────────────────────────────
-    st.markdown('<div class="section-hd">Factor Predictability Table — sorted by |IC|</div>',
+    st.markdown('<div class="section-hd">Factor Rank IC Table — sorted by |Mean IC|</div>',
                 unsafe_allow_html=True)
+
     if ic_filt.empty:
-        st.info("No factors pass the current filters. Relax Min |IC|, Max p-value, or Min N.")
+        st.info("No factors pass filters. Relax Min |Mean IC|, Max p-value, or Min Years.")
     else:
         dcols = ["Factor", "Group"]
-        if show_ic:   dcols.append("IC")
-        if show_r2:   dcols.append("R2")
-        if show_beta: dcols.append("Beta")
-        if show_pval: dcols.append("P-Value")
-        if show_n:    dcols.append("N")
+        if show_mean_ic:  dcols.append("Mean IC")
+        if show_ic_ir:    dcols.append("IC-IR")
+        if show_hit_rate: dcols.append("Hit Rate")
+        if show_pval:     dcols.append("p-value")
+        if show_nyears:   dcols.append("N Years")
+        if show_range:    dcols += ["Min IC", "Max IC"]
 
-        def _ic_style(v):
-            if not isinstance(v, float): return ""
-            if v >  0.10: return "color:#3fb950;font-weight:600"
-            if v < -0.10: return "color:#f85149;font-weight:600"
+        def _s_ic(v):
+            if not isinstance(v, (int, float)): return ""
+            if v >  0.10: return "color:#3fb950;font-weight:700"
+            if v >  0.05: return "color:#56d364"
+            if v < -0.10: return "color:#f85149;font-weight:700"
+            if v < -0.05: return "color:#ff7b72"
+            return "color:#8b949e"
+
+        def _s_icir(v):
+            if not isinstance(v, (int, float)): return ""
+            if abs(v) > 1.50: return "color:#3fb950;font-weight:700"
+            if abs(v) > 0.75: return "color:#56d364"
+            return "color:#8b949e"
+
+        def _s_hr(v):
+            if not isinstance(v, (int, float)): return ""
+            if v >= 70: return "color:#3fb950;font-weight:700"
+            if v >= 55: return "color:#56d364"
+            if v <= 35: return "color:#f85149"
+            return "color:#8b949e"
+
+        def _s_pv(v):
+            if not isinstance(v, (int, float)): return ""
+            if v < 0.05: return "color:#3fb950"
+            if v < 0.10: return "color:#f0b429"
             return "color:#8b949e"
 
         styled = ic_filt[dcols].set_index("Factor").style
-        if show_ic:
-            styled = styled.map(_ic_style, subset=["IC"])
+        if show_mean_ic:  styled = styled.map(_s_ic,   subset=["Mean IC"])
+        if show_ic_ir:    styled = styled.map(_s_icir, subset=["IC-IR"])
+        if show_hit_rate: styled = styled.map(_s_hr,   subset=["Hit Rate"])
+        if show_pval:     styled = styled.map(_s_pv,   subset=["p-value"])
         st.dataframe(styled, use_container_width=True)
 
     st.divider()
 
     # ── Deep Dive ─────────────────────────────────────────────────────────────
     st.markdown('<div class="section-hd">Factor Deep Dive</div>', unsafe_allow_html=True)
-    if ic_all.empty:
-        st.info("No factors to analyse. Expand factor groups or year range.")
-        st.stop()
 
-    sel_label = st.selectbox("Select factor to deep dive", ic_all["Factor"].tolist(), key="p2_deep")
-    sel_row   = ic_all[ic_all["Factor"] == sel_label].iloc[0]
-    sel_key   = sel_row["_key"]
-    dd_ic, dd_r2, dd_beta, dd_pval, dd_n, dd_int = (
-        sel_row["IC"], sel_row["R2"], sel_row["Beta"],
-        sel_row["P-Value"], sel_row["N"], sel_row["_intercept"]
-    )
+    sel_label    = st.selectbox("Select factor", ic_all["Factor"].tolist(), key="p2_deep")
+    sel_row      = ic_all[ic_all["Factor"] == sel_label].iloc[0]
+    sel_key      = sel_row["_key"]
+    dd_mean_ic   = sel_row["Mean IC"]
+    dd_ic_ir     = sel_row["IC-IR"]
+    dd_hr        = sel_row["Hit Rate"]
+    dd_pval      = sel_row["p-value"]
+    dd_n         = sel_row["N Years"]
+    dd_min_ic    = sel_row["Min IC"]
+    dd_max_ic    = sel_row["Max IC"]
+    dd_ic_by_yr  = sel_row["_ic_by_year"]
 
-    if   dd_pval < 0.01: sig_str, sig_cls = "p < 0.01  (99% confidence)", "chip-g"
-    elif dd_pval < 0.05: sig_str, sig_cls = "p < 0.05  (95% confidence)", "chip-g"
-    elif dd_pval < 0.10: sig_str, sig_cls = "p < 0.10  (90% confidence)", "chip-b"
-    else:                sig_str, sig_cls = "Not statistically significant", "chip-r"
+    # significance
+    if   dd_pval < 0.01: sig_str, sig_cls = "p < 0.01 · 99% confident", "chip-g"
+    elif dd_pval < 0.05: sig_str, sig_cls = "p < 0.05 · 95% confident", "chip-g"
+    elif dd_pval < 0.10: sig_str, sig_cls = "p < 0.10 · 90% confident", "chip-b"
+    else:                sig_str, sig_cls = "Not significant",            "chip-r"
+
+    # IC-IR quality label
+    if   dd_ic_ir >  1.5: icir_cls, icir_q = "chip-g", "strong & consistent"
+    elif dd_ic_ir >  0.5: icir_cls, icir_q = "chip-b", "moderate"
+    elif dd_ic_ir > -0.5: icir_cls, icir_q = "chip-r", "weak"
+    else:                  icir_cls, icir_q = "chip-r", "negative & inconsistent"
+
+    # Hit rate quality label
+    if   dd_hr >= 65: hr_cls, hr_q = "chip-g", "reliable"
+    elif dd_hr >= 50: hr_cls, hr_q = "chip-b", "mixed"
+    else:              hr_cls, hr_q = "chip-r", "unreliable"
 
     # Stat chips
     st.markdown(
         f'<div class="p2-stat-row">'
-        f'<span class="chip chip-g">IC = {dd_ic:+.4f}</span>'
-        f'<span class="chip chip-g">R2 = {dd_r2:.4f}</span>'
-        f'<span class="chip chip-g">Beta = {dd_beta:+.6f}</span>'
-        f'<span class="chip chip-b">N = {dd_n}</span>'
+        f'<span class="chip {"chip-g" if dd_mean_ic > 0.05 else ("chip-b" if dd_mean_ic > 0 else "chip-r")}">Mean IC {dd_mean_ic:+.4f}</span>'
+        f'<span class="chip {icir_cls}">IC-IR {dd_ic_ir:+.3f} · {icir_q}</span>'
+        f'<span class="chip {hr_cls}">Hit Rate {dd_hr:.0f}% · {hr_q}</span>'
+        f'<span class="chip chip-b">{dd_n} years</span>'
         f'<span class="chip {sig_cls}">{sig_str}</span>'
         f'</div>',
         unsafe_allow_html=True,
     )
 
-    # R2 bar + Beta bar
-    r2_pct   = min(dd_r2 * 100, 100)
-    r2_col   = "#f0b429" if r2_pct < 10 else "#3fb950"
-    beta_ref = max(ic_all["Beta"].abs().max(), 0.001)
-    beta_pct = min(abs(dd_beta) / beta_ref * 50, 50)
-    beta_col = "#3fb950" if dd_beta >= 0 else "#f85149"
-    if dd_beta >= 0:
-        b_style = f"position:absolute;top:0;left:50%;height:8px;border-radius:0 3px 3px 0;width:{beta_pct:.1f}%;background:{beta_col};"
-    else:
-        b_style = f"position:absolute;top:0;left:{50-beta_pct:.1f}%;height:8px;border-radius:3px 0 0 3px;width:{beta_pct:.1f}%;background:{beta_col};"
+    # ── Three visual bars ─────────────────────────────────────────────────────
+    # IC-IR bar (centred at 0, range -3 to +3)
+    icir_clamped = max(-3.0, min(3.0, dd_ic_ir))
+    icir_pct     = (icir_clamped + 3.0) / 6.0 * 100
+    icir_col     = "#3fb950" if dd_ic_ir >= 0 else "#f85149"
 
-    st.markdown(
-        f'''<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:8px;">
-      <div>
-        <div style="font-size:0.65rem;color:#6e7681;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">
-          R2 Variance Explained &mdash; {r2_pct:.1f}%
-        </div>
-        <div class="p2-bar-track">
-          <div class="p2-bar-fill" style="width:{r2_pct:.1f}%;background:{r2_col};"></div>
-        </div>
-      </div>
-      <div>
-        <div style="font-size:0.65rem;color:#6e7681;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">
-          Beta Direction &amp; Magnitude &mdash; {dd_beta:+.4f}
-        </div>
-        <div class="p2-beta-wrap">
-          <div style="position:absolute;top:0;left:50%;width:1px;height:8px;background:#484f58;"></div>
-          <div style="{b_style}"></div>
-        </div>
-      </div>
-    </div>''',
-        unsafe_allow_html=True,
-    )
+    # Hit rate bar (0–100%)
+    hr_col = "#3fb950" if dd_hr >= 65 else ("#f0b429" if dd_hr >= 50 else "#f85149")
 
-    # Scatter plot
+    # IC range bar (maps [-1,+1] → [0%,100%])
+    rng_left  = max(0.0, (dd_min_ic + 1) / 2 * 100)
+    rng_width = max(0.0, min(100.0 - rng_left, (dd_max_ic - dd_min_ic) / 2 * 100))
+    rng_mean  = max(0.0, min(100.0, (dd_mean_ic + 1) / 2 * 100))
+
+    st.markdown(f'''
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-bottom:12px;">
+  <div>
+    <div style="font-size:0.65rem;color:#6e7681;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">
+      IC-IR (Factor Sharpe) &mdash; {dd_ic_ir:+.3f}
+    </div>
+    <div class="p2-mid-wrap">
+      <div style="position:absolute;top:0;left:50%;width:1px;height:8px;background:#484f58;"></div>
+      <div style="position:absolute;top:0;left:{min(50,icir_pct):.1f}%;width:{abs(icir_pct-50):.1f}%;height:8px;border-radius:3px;background:{icir_col};"></div>
+    </div>
+  </div>
+  <div>
+    <div style="font-size:0.65rem;color:#6e7681;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">
+      Hit Rate &mdash; {dd_hr:.0f}% of years positive
+    </div>
+    <div class="p2-bar-track">
+      <div class="p2-bar-fill" style="width:{dd_hr:.1f}%;background:{hr_col};"></div>
+    </div>
+  </div>
+  <div>
+    <div style="font-size:0.65rem;color:#6e7681;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">
+      IC Range &mdash; {dd_min_ic:+.3f} to {dd_max_ic:+.3f}
+    </div>
+    <div class="p2-mid-wrap">
+      <div style="position:absolute;top:0;left:50%;width:1px;height:8px;background:#484f58;"></div>
+      <div style="position:absolute;top:2px;height:4px;border-radius:2px;background:#58a6ff;left:{rng_left:.1f}%;width:{rng_width:.1f}%;"></div>
+      <div style="position:absolute;top:0;left:{rng_mean:.1f}%;width:2px;height:8px;background:#f0b429;border-radius:1px;"></div>
+    </div>
+  </div>
+</div>''', unsafe_allow_html=True)
+
+    # ── Year-by-year Rank IC chart ─────────────────────────────────────────────
+    if dd_ic_by_yr:
+        yy_df   = pd.DataFrame([{"Year": str(int(y)), "IC": round(v, 4)}
+                                 for y, v in sorted(dd_ic_by_yr.items())])
+        mean_ic = yy_df["IC"].mean()
+        pct_pos = (yy_df["IC"] > 0).mean() * 100
+
+        fig_yy = go.Figure()
+        fig_yy.add_trace(go.Bar(
+            x=yy_df["Year"], y=yy_df["IC"],
+            marker_color=["#3fb950" if v >= 0 else "#f85149" for v in yy_df["IC"]],
+            hovertemplate="FY%{x}<br>Rank IC = %{y:.4f}<extra></extra>",
+        ))
+        fig_yy.add_hline(y=0,       line_color="#484f58", line_dash="dot",   line_width=1)
+        fig_yy.add_hline(y=mean_ic, line_color="#f0b429", line_dash="solid", line_width=2,
+                         annotation_text=f"Mean = {mean_ic:+.4f}",
+                         annotation_font_color="#f0b429",
+                         annotation_position="top right")
+        fig_yy.update_layout(
+            title=f"Year-by-Year Cross-Sectional Rank IC  |  Hit Rate {pct_pos:.0f}%  |  IC-IR {dd_ic_ir:+.3f}",
+            height=290, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#8b949e", size=10), showlegend=False,
+            xaxis=dict(type="category", showgrid=False),
+            yaxis=dict(showgrid=True, gridcolor="#21262d", zeroline=False),
+            margin=dict(l=0, r=0, t=40, b=0),
+        )
+        st.plotly_chart(fig_yy, use_container_width=True)
+
+    # ── Scatter: all years pooled — visual reference ───────────────────────────
     scat = df_ic[[sel_key, "Return_1Y_Fwd", "Company", "year"]].dropna()
-    xmin, xmax = scat[sel_key].min(), scat[sel_key].max()
-    fig_sc = go.Figure()
-    fig_sc.add_trace(go.Scatter(
-        x=scat[sel_key], y=scat["Return_1Y_Fwd"],
-        mode="markers",
-        marker=dict(color="#3fb950", size=6, opacity=0.65),
-        customdata=scat[["Company", "year"]].values,
-        hovertemplate=(
-            "<b>%{customdata[0]}</b>  FY%{customdata[1]}<br>"
-            + sel_label + ": %{x:.3f}<br>Fwd Return: %{y:.1f}%<extra></extra>"
-        ),
-    ))
-    fig_sc.add_trace(go.Scatter(
-        x=[xmin, xmax],
-        y=[dd_int + dd_beta * xmin, dd_int + dd_beta * xmax],
-        mode="lines", line=dict(color="#f0b429", width=2),
-    ))
-    fig_sc.add_hline(y=0, line_color="#484f58", line_dash="dot", line_width=1)
-    fig_sc.update_layout(
-        title=f"{sel_label}  vs  Next-Year Return  |  IC {dd_ic:+.4f}  |  R2 {dd_r2:.4f}",
-        height=420, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#8b949e", size=10), showlegend=False,
-        xaxis=dict(title=sel_label, showgrid=True, gridcolor="#21262d"),
-        yaxis=dict(title="Forward Return (%)", showgrid=True, gridcolor="#21262d"),
-        margin=dict(l=0, r=0, t=40, b=0),
-    )
-    st.plotly_chart(fig_sc, use_container_width=True)
+    if len(scat) >= 5:
+        try:
+            _sl, _ic_v, _, _, _ = _linregress(scat[sel_key].values, scat["Return_1Y_Fwd"].values)
+            xlo, xhi = scat[sel_key].min(), scat[sel_key].max()
+            ols_ok = True
+        except Exception:
+            ols_ok = False
 
-    # Interpretation box — below scatter
-    direction = "positively" if dd_ic > 0 else "negatively"
-    strength  = "strongly" if abs(dd_ic) > 0.20 else ("moderately" if abs(dd_ic) > 0.10 else "weakly")
-    st.markdown(
-        f'''<div class="p2-interp">
-      <p><b>{sel_label}</b> {strength} correlates {direction} with next-year returns in <b>{sector}</b>.</p>
-      <p><b>IC {dd_ic:+.4f}</b> &mdash; Direction and strength of factor-return relationship.
-         Benchmark: |IC| &gt; 0.05 = meaningful, &gt; 0.10 = strong signal worth trading.</p>
-      <p><b>R2 {dd_r2:.4f}</b> &mdash; This factor alone explains <b>{dd_r2*100:.1f}%</b> of
-         next-year return variance. Single factors rarely exceed 10-15% in practice.</p>
-      <p><b>Beta {dd_beta:+.6f}</b> &mdash; For every +1 unit in {sel_label},
-         next-year return changes by <b>{dd_beta:+.4f}%</b> on average (OLS regression slope).</p>
-      <p><b>p-value {dd_pval:.4f}</b> &mdash; {sig_str}. Based on <b>{dd_n}</b> company-year observations.</p>
-    </div>''',
-        unsafe_allow_html=True,
-    )
-
-    # Year-by-year IC stability
-    if show_yy:
-        st.markdown('<div class="section-hd">IC Stability Across Years</div>', unsafe_allow_html=True)
-        yy_rows = []
-        for yr in sorted(df_ic["year"].unique()):
-            yd = df_ic[df_ic["year"] == yr][[sel_key, "Return_1Y_Fwd"]].dropna()
-            if len(yd) >= 4 and yd[sel_key].nunique() >= 2:
-                try:
-                    _, _, r_y, _, _ = _linregress(yd[sel_key], yd["Return_1Y_Fwd"])
-                    yy_rows.append({"Year": str(int(yr)), "IC": round(r_y, 4)})
-                except Exception:
-                    pass
-
-        if yy_rows:
-            yy_df   = pd.DataFrame(yy_rows)
-            mean_ic = yy_df["IC"].mean()
-            pct_pos = (yy_df["IC"] > 0).mean() * 100
-            fig_yy  = go.Figure()
-            fig_yy.add_trace(go.Bar(
-                x=yy_df["Year"], y=yy_df["IC"],
-                marker_color=["#3fb950" if v >= 0 else "#f85149" for v in yy_df["IC"]],
-                hovertemplate="FY%{x}<br>IC = %{y:.4f}<extra></extra>",
+        fig_sc = go.Figure()
+        fig_sc.add_trace(go.Scatter(
+            x=scat[sel_key], y=scat["Return_1Y_Fwd"],
+            mode="markers",
+            marker=dict(color="#3fb950", size=6, opacity=0.65),
+            customdata=scat[["Company", "year"]].values,
+            hovertemplate=(
+                "<b>%{customdata[0]}</b>  FY%{customdata[1]}<br>"
+                + sel_label + ": %{x:.3f}<br>Fwd Return: %{y:.1f}%<extra></extra>"
+            ),
+        ))
+        if ols_ok:
+            fig_sc.add_trace(go.Scatter(
+                x=[xlo, xhi],
+                y=[_ic_v + _sl * xlo, _ic_v + _sl * xhi],
+                mode="lines", line=dict(color="#f0b429", width=1.5, dash="dot"),
+                showlegend=False,
             ))
-            fig_yy.add_hline(y=0,       line_color="#484f58", line_dash="dot",   line_width=1)
-            fig_yy.add_hline(y=mean_ic, line_color="#f0b429", line_dash="solid", line_width=2,
-                             annotation_text=f"Mean IC = {mean_ic:+.4f}",
-                             annotation_font_color="#f0b429",
-                             annotation_position="top right")
-            fig_yy.update_layout(
-                title=f"Year-by-Year IC  |  Positive in {pct_pos:.0f}% of years  |  Mean = {mean_ic:+.4f}",
-                height=300, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#8b949e", size=10), showlegend=False,
-                xaxis=dict(type="category", showgrid=False),
-                yaxis=dict(showgrid=True, gridcolor="#21262d", zeroline=False),
-                margin=dict(l=0, r=0, t=40, b=0),
-            )
-            st.plotly_chart(fig_yy, use_container_width=True)
+        fig_sc.add_hline(y=0, line_color="#484f58", line_dash="dot", line_width=1)
+        fig_sc.update_layout(
+            title=f"{sel_label}  vs  Next-Year Return  ·  all years pooled (visual reference)",
+            height=390, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#8b949e", size=10), showlegend=False,
+            xaxis=dict(title=sel_label,         showgrid=True, gridcolor="#21262d"),
+            yaxis=dict(title="Forward Return %", showgrid=True, gridcolor="#21262d"),
+            margin=dict(l=0, r=0, t=40, b=0),
+        )
+        st.plotly_chart(fig_sc, use_container_width=True)
 
-            if pct_pos >= 70 and abs(mean_ic) >= 0.05:
-                verd, vcls = "Consistent signal — positive IC in most years.", "chip-g"
-            elif pct_pos <= 35 or abs(mean_ic) < 0.02:
-                verd, vcls = "Unreliable — IC flips sign. Not tradeable on its own.", "chip-r"
-            else:
-                verd, vcls = "Mixed — use alongside other factors.", "chip-b"
-            st.markdown(f'<span class="chip {vcls}">{verd}</span><br><br>', unsafe_allow_html=True)
+    # ── Interpretation box ────────────────────────────────────────────────────
+    direction = "positively" if dd_mean_ic > 0 else "negatively"
+    strength  = "strongly" if abs(dd_mean_ic) > 0.15 else ("meaningfully" if abs(dd_mean_ic) > 0.07 else "weakly")
+
+    st.markdown(f'''<div class="p2-interp">
+      <p><b>{sel_label}</b> {strength} and {hr_q} correlates {direction} with next-year returns in <b>{sector}</b>.</p>
+      <p><b>Mean IC {dd_mean_ic:+.4f}</b> &mdash; Average Spearman rank correlation across {dd_n} independent years.
+         Each year: all companies ranked by this factor, then ranked by next-year return — Spearman correlation between the two rankings.
+         Benchmark: |IC| &gt; 0.05 = meaningful signal, &gt; 0.10 = strong.</p>
+      <p><b>IC-IR {dd_ic_ir:+.3f}</b> &mdash; Mean IC &divide; Std(IC). The Sharpe ratio of this factor.
+         This signal is <b>{icir_q}</b>.
+         IC-IR &gt; 1.5 = consistently directional across years. &lt; 0.5 = too noisy to rely on alone.</p>
+      <p><b>Hit Rate {dd_hr:.0f}%</b> &mdash; The factor had a positive IC in {dd_hr:.0f}% of years.
+         Range this year to worst: {dd_min_ic:+.3f} to {dd_max_ic:+.3f} (yellow = mean on range bar above).</p>
+      <p><b>{sig_str}</b> &mdash; t-test on the {dd_n} annual IC values. Tests whether mean IC is genuinely non-zero.</p>
+    </div>''', unsafe_allow_html=True)
 
     st.caption(
-        "IC = Pearson correlation (factor year T vs return year T+1). "
-        "R2 = variance explained. Beta = OLS slope. Yellow line = mean IC across all years."
+        "Method: Cross-Sectional Rank IC (Spearman). "
+        "Each bar = one independent year's rank correlation across companies in this sector. "
+        "Scatter is all years pooled — visual reference only; statistics come from the bar chart above."
     )
