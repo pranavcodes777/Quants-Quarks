@@ -686,19 +686,18 @@ with tab4:
                                   help="Minimum years with valid cross-sectional data.")
     with r2b:
         st.markdown('<div class="section-hd">Table Columns</div>', unsafe_allow_html=True)
-        tc1, tc2, tc3, tc4 = st.columns(4)
+        tc1, tc2, tc3 = st.columns(3)
         with tc1:
             show_mean_ic  = st.checkbox("Mean IC",  value=True,  key="p2_show_ic")
             show_ic_ir    = st.checkbox("IC-IR",    value=True,  key="p2_show_icir")
+            show_r2       = st.checkbox("R² (%)",   value=False, key="p2_show_r2")
         with tc2:
             show_hit_rate = st.checkbox("Hit Rate", value=True,  key="p2_show_hr")
             show_pval     = st.checkbox("p-value",  value=True,  key="p2_show_pval")
+            show_beta     = st.checkbox("Beta",     value=False, key="p2_show_beta")
         with tc3:
             show_nyears   = st.checkbox("N Years",  value=True,  key="p2_show_n")
             show_range    = st.checkbox("IC Range", value=False, key="p2_show_range")
-        with tc4:
-            show_r2       = st.checkbox("R² (%)",   value=False, key="p2_show_r2")
-            show_beta     = st.checkbox("Beta",     value=False, key="p2_show_beta")
 
     st.divider()
 
