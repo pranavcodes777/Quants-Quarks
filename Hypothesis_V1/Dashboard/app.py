@@ -686,7 +686,7 @@ with tab4:
                                   help="Minimum years with valid cross-sectional data.")
     with r2b:
         st.markdown('<div class="section-hd">Table Columns</div>', unsafe_allow_html=True)
-        tc1, tc2, tc3 = st.columns(3)
+        tc1, tc2, tc3, tc4 = st.columns(4)
         with tc1:
             show_mean_ic  = st.checkbox("Mean IC",  value=True,  key="p2_show_ic")
             show_ic_ir    = st.checkbox("IC-IR",    value=True,  key="p2_show_icir")
@@ -696,6 +696,9 @@ with tab4:
         with tc3:
             show_nyears   = st.checkbox("N Years",  value=True,  key="p2_show_n")
             show_range    = st.checkbox("IC Range", value=False, key="p2_show_range")
+        with tc4:
+            show_r2       = st.checkbox("R² (%)",   value=False, key="p2_show_r2")
+            show_beta     = st.checkbox("Beta",     value=False, key="p2_show_beta")
 
     st.divider()
 
@@ -710,7 +713,8 @@ with tab4:
     for f in p2_factors:
         if f not in df_ic.columns or f not in FACTOR_META:
             continue
-        ic_by_year = {}
+        ic_by_year   = {}
+        beta_by_year = {}
         for yr in sorted(df_ic["year"].unique()):
             yr_df = df_ic[df_ic["year"] == yr][[f, "Return_1Y_Fwd"]].dropna()
             if len(yr_df) < 3 or yr_df[f].nunique() < 2:
@@ -721,17 +725,25 @@ with tab4:
                     ic_by_year[yr] = float(corr)
             except Exception:
                 pass
+            try:
+                slope = float(np.polyfit(yr_df[f].values, yr_df["Return_1Y_Fwd"].values, 1)[0])
+                if not np.isnan(slope):
+                    beta_by_year[yr] = slope
+            except Exception:
+                pass
 
         if len(ic_by_year) < 2:
             continue
 
-        ic_vals  = list(ic_by_year.values())
-        mean_ic  = float(np.mean(ic_vals))
-        std_ic   = float(np.std(ic_vals, ddof=1))
-        n_years  = len(ic_vals)
-        ic_ir    = mean_ic / std_ic if std_ic > 0 else 0.0
-        hit_rate = sum(1 for v in ic_vals if v > 0) / n_years * 100
-        t_stat   = mean_ic / (std_ic / np.sqrt(n_years)) if std_ic > 0 else np.nan
+        ic_vals   = list(ic_by_year.values())
+        mean_ic   = float(np.mean(ic_vals))
+        std_ic    = float(np.std(ic_vals, ddof=1))
+        n_years   = len(ic_vals)
+        ic_ir     = mean_ic / std_ic if std_ic > 0 else 0.0
+        hit_rate  = sum(1 for v in ic_vals if v > 0) / n_years * 100
+        t_stat    = mean_ic / (std_ic / np.sqrt(n_years)) if std_ic > 0 else np.nan
+        r2_pct    = round(mean_ic ** 2 * 100, 2)
+        mean_beta = round(float(np.mean(list(beta_by_year.values()))), 4) if beta_by_year else np.nan
         try:
             p_val = float(2 * stats.t.sf(abs(t_stat), df=n_years - 1))
         except Exception:
@@ -746,6 +758,8 @@ with tab4:
             "Hit Rate":    round(hit_rate, 1),
             "N Years":     n_years,
             "p-value":     round(p_val, 4) if not np.isnan(p_val) else np.nan,
+            "R² (%)":      r2_pct,
+            "Beta":        mean_beta,
             "Min IC":      round(min(ic_vals), 4),
             "Max IC":      round(max(ic_vals), 4),
             "_ic_by_year": ic_by_year,
@@ -785,6 +799,8 @@ with tab4:
         if show_hit_rate: dcols.append("Hit Rate")
         if show_pval:     dcols.append("p-value")
         if show_nyears:   dcols.append("N Years")
+        if show_r2:       dcols.append("R² (%)")
+        if show_beta:     dcols.append("Beta")
         if show_range:    dcols += ["Min IC", "Max IC"]
 
         def _s_ic(v):
@@ -814,11 +830,27 @@ with tab4:
             if v < 0.10: return "color:#f0b429"
             return "color:#8b949e"
 
+        def _s_r2(v):
+            if not isinstance(v, (int, float)): return ""
+            if v >= 10: return "color:#3fb950;font-weight:700"
+            if v >=  4: return "color:#56d364"
+            if v >=  1: return "color:#8b949e"
+            return "color:#484f58"
+
+        def _s_beta(v):
+            if not isinstance(v, (int, float)) or np.isnan(v): return ""
+            if v >  5: return "color:#3fb950;font-weight:700"
+            if v >  0: return "color:#56d364"
+            if v < -5: return "color:#f85149;font-weight:700"
+            return "color:#ff7b72"
+
         styled = ic_filt[dcols].set_index("Factor").style
         if show_mean_ic:  styled = styled.map(_s_ic,   subset=["Mean IC"])
         if show_ic_ir:    styled = styled.map(_s_icir, subset=["IC-IR"])
         if show_hit_rate: styled = styled.map(_s_hr,   subset=["Hit Rate"])
         if show_pval:     styled = styled.map(_s_pv,   subset=["p-value"])
+        if show_r2:       styled = styled.map(_s_r2,   subset=["R² (%)"])
+        if show_beta:     styled = styled.map(_s_beta, subset=["Beta"])
         st.dataframe(styled, use_container_width=True)
 
     st.divider()
@@ -836,6 +868,8 @@ with tab4:
     dd_n         = sel_row["N Years"]
     dd_min_ic    = sel_row["Min IC"]
     dd_max_ic    = sel_row["Max IC"]
+    dd_r2        = sel_row["R² (%)"]
+    dd_beta      = sel_row["Beta"]
     dd_ic_by_yr  = sel_row["_ic_by_year"]
 
     # significance
@@ -856,6 +890,10 @@ with tab4:
     else:              hr_cls, hr_q = "chip-r", "unreliable"
 
     # Stat chips
+    r2_cls   = "chip-g" if dd_r2 >= 10 else ("chip-b" if dd_r2 >= 4 else "chip-r")
+    beta_str = f"{dd_beta:+.2f}% / unit" if not (isinstance(dd_beta, float) and np.isnan(dd_beta)) else "n/a"
+    beta_cls = "chip-g" if (not (isinstance(dd_beta, float) and np.isnan(dd_beta))) and dd_beta > 0 else "chip-r"
+
     st.markdown(
         f'<div class="p2-stat-row">'
         f'<span class="chip {"chip-g" if dd_mean_ic > 0.05 else ("chip-b" if dd_mean_ic > 0 else "chip-r")}">Mean IC {dd_mean_ic:+.4f}</span>'
@@ -863,6 +901,8 @@ with tab4:
         f'<span class="chip {hr_cls}">Hit Rate {dd_hr:.0f}% · {hr_q}</span>'
         f'<span class="chip chip-b">{dd_n} years</span>'
         f'<span class="chip {sig_cls}">{sig_str}</span>'
+        f'<span class="chip {r2_cls}">R² {dd_r2:.1f}%</span>'
+        f'<span class="chip {beta_cls}">β {beta_str}</span>'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -994,6 +1034,10 @@ with tab4:
       <p><b>Hit Rate {dd_hr:.0f}%</b> &mdash; The factor had a positive IC in {dd_hr:.0f}% of years.
          Range this year to worst: {dd_min_ic:+.3f} to {dd_max_ic:+.3f} (yellow = mean on range bar above).</p>
       <p><b>{sig_str}</b> &mdash; t-test on the {dd_n} annual IC values. Tests whether mean IC is genuinely non-zero.</p>
+      <p><b>R² {dd_r2:.1f}%</b> &mdash; Mean IC squared. Roughly: this factor alone explains {dd_r2:.1f}% of the cross-sectional return variance each year (in rank space).
+         In factor investing 2–5% is normal, 10%+ is exceptional for a single metric.</p>
+      <p><b>Beta {beta_str}</b> &mdash; Average year-by-year OLS slope. For each 1-unit increase in <i>{sel_label}</i>, next-year return changes by {beta_str} on average.
+         This is the raw sensitivity — use it to gauge economic magnitude, not just direction.</p>
     </div>''', unsafe_allow_html=True)
 
     st.caption(
