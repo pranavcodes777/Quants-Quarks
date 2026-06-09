@@ -76,6 +76,11 @@ st.markdown("""
   .ac-card { background:var(--secondary-background-color); border:1px solid rgba(128,128,128,0.2); border-radius:8px; padding:14px 18px; margin-bottom:8px; }
   .ac-card p { margin:0 0 4px; font-size:.79rem; color:var(--text-color); opacity:0.7; line-height:1.65; }
   .ac-card b { color:var(--text-color); opacity:1; }
+
+  /* Shrink st.metric values site-wide — default is too large */
+  div[data-testid="stMetricValue"] { font-size: 1.25rem !important; }
+  div[data-testid="stMetricLabel"] { font-size: 0.68rem !important; }
+  div[data-testid="stMetricDelta"] { font-size: 0.68rem !important; }
 </style>
 """, unsafe_allow_html=True)
 
