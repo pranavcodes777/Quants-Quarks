@@ -545,6 +545,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["  Correlation Matrix  ", "  Factor Expl
 # ══════════════════════════════════════════════════════════════════════════════
 with tab1:
     all_groups = list(dict.fromkeys(FACTOR_META[f]["group"] for f in avail if f in FACTOR_META))
+    _grp_ver   = len(all_groups)   # bump when new groups are added → resets cached session state
 
     # ── Heatmap toggle + controls ─────────────────────────────────────────────
     hm_ctrl1, hm_ctrl2, hm_ctrl3 = st.columns([1, 5, 1])
@@ -553,7 +554,7 @@ with tab1:
                                   help="The heatmap is heavy — toggle on only when you need it. Everything else on this tab works without it.")
     with hm_ctrl2:
         sel_groups_hm = st.multiselect(
-            "hm_label", all_groups, default=all_groups, key="hm_groups",
+            "hm_label", all_groups, default=all_groups, key=f"hm_groups_{_grp_ver}",
             label_visibility="collapsed", disabled=not show_heatmap,
         )
     with hm_ctrl3:
@@ -626,7 +627,7 @@ with tab1:
     st.divider()
     st.markdown('<div class="section-hd">Analysis — Factor Groups</div>', unsafe_allow_html=True)
     sel_groups_an = st.multiselect(
-        "an_label", all_groups, default=all_groups, key="an_groups",
+        "an_label", all_groups, default=all_groups, key=f"an_groups_{_grp_ver}",
         label_visibility="collapsed"
     )
     an_factors = [f for f in avail if FACTOR_META.get(f, {}).get("group") in sel_groups_an]
