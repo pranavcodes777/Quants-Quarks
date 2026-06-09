@@ -480,7 +480,7 @@ retained_per_group, group_comp_stats, factor_icir_map = compute_composite_stats(
 
 # neutral Plotly defaults that work on both dark and light Streamlit themes
 _PLY = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#888888", size=10), margin=dict(l=0, r=0, t=40, b=0))
+            font=dict(color="#888888", size=10))
 _GRID = "rgba(128,128,128,0.2)"
 _LINE = "rgba(128,128,128,0.4)"
 
