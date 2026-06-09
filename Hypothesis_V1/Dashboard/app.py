@@ -544,7 +544,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["  Correlation Matrix  ", "  Factor Expl
 # ══════════════════════════════════════════════════════════════════════════════
 with tab1:
     all_groups = list(dict.fromkeys(FACTOR_META[f]["group"] for f in avail if f in FACTOR_META))
-    _grp_ver   = len(all_groups)   # bump when new groups are added → resets cached session state
+    _grp_ver   = "v3"   # bump this string whenever new groups are added to force a fresh default
 
     # ── Heatmap toggle + controls ─────────────────────────────────────────────
     hm_ctrl1, hm_ctrl2, hm_ctrl3 = st.columns([1, 5, 1])
@@ -851,7 +851,7 @@ with tab4:
     st.markdown('<div class="section-hd">Factor Groups to Analyse</div>', unsafe_allow_html=True)
     all_grps_p2 = list(dict.fromkeys(FACTOR_META[f]["group"] for f in avail if f in FACTOR_META))
     sel_grps_p2 = st.multiselect("p2g", all_grps_p2, default=all_grps_p2,
-                                  label_visibility="collapsed", key=f"p2_groups_{len(all_grps_p2)}")
+                                  label_visibility="collapsed", key="p2_groups_v3")
     p2_factors  = [f for f in avail if FACTOR_META.get(f, {}).get("group") in sel_grps_p2]
 
     # ── Filters + column toggles ──────────────────────────────────────────────
