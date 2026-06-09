@@ -1431,7 +1431,7 @@ with tab5:
                 margin=dict(l=0, r=0, t=45, b=0),
                 xaxis=dict(type="category", showgrid=False, tickfont=dict(size=10)),
                 yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False,
-                           tickformat="+.2f", tickfont=dict(size=9)),
+                           tickformat=".3f", nticks=8, tickfont=dict(size=9)),
                 bargap=0.25,
                 hovermode="x unified",
             )
