@@ -272,13 +272,16 @@ def load_data(sector: str) -> pd.DataFrame:
 
 
 # ── Correlation helpers ────────────────────────────────────────────────────────
+# NOTE: parameters starting with _ are NOT hashed by st.cache_data.
+# The hash strings (df_hash / corr_hash) must NOT start with _ so Streamlit
+# includes them in the cache key — otherwise every call hits the same cache entry.
 @st.cache_data(show_spinner=False)
-def compute_corr(_df_hash: str, cols: tuple, method: str, _df: pd.DataFrame) -> pd.DataFrame:
+def compute_corr(df_hash: str, cols: tuple, method: str, _df: pd.DataFrame) -> pd.DataFrame:
     return _df[list(cols)].corr(method=method.lower())
 
 
 @st.cache_data(show_spinner=False)
-def corr_pvalues(_df_hash: str, cols: tuple, _df: pd.DataFrame) -> pd.DataFrame:
+def corr_pvalues(df_hash: str, cols: tuple, _df: pd.DataFrame) -> pd.DataFrame:
     col_list = list(cols)
     pmat = pd.DataFrame(1.0, index=col_list, columns=col_list)
     for i, c1 in enumerate(col_list):
@@ -294,7 +297,7 @@ def corr_pvalues(_df_hash: str, cols: tuple, _df: pd.DataFrame) -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
-def cluster_order(_corr_hash: str, _corr: pd.DataFrame) -> list[str]:
+def cluster_order(corr_hash: str, _corr: pd.DataFrame) -> list[str]:
     dist = (1 - _corr.abs()).clip(0, 1).to_numpy(copy=True)
     np.fill_diagonal(dist, 0)
     try:
