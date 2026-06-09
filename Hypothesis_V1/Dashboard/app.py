@@ -694,7 +694,7 @@ with tab1:
                 unsafe_allow_html=True,
             )
         st.markdown(
-            f"<br><small style='color:{T[\"text_dim\"]}'>{len(retained)} of {len(order)} factors retained</small>",
+            "<br><small style='color:" + T["text_dim"] + f"'>{len(retained)} of {len(order)} factors retained</small>",
             unsafe_allow_html=True,
         )
 
