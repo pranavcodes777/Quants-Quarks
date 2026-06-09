@@ -1006,7 +1006,6 @@ with tab4:
 
     # ── Deep Dive ─────────────────────────────────────────────────────────────
     st.markdown('<div class="section-hd">Factor Deep Dive</div>', unsafe_allow_html=True)
-    st.markdown('<p style="color:#f0b429;font-size:0.7rem;">v2 loaded</p>', unsafe_allow_html=True)
 
     sel_label    = st.selectbox("Select factor", ic_all["Factor"].tolist(), key="p2_deep")
     sel_row      = ic_all[ic_all["Factor"] == sel_label].iloc[0]
@@ -1280,62 +1279,39 @@ with tab4:
         verdict_label, verdict_bg = "WEAK / NOISY", "#2d2510"
         verdict_border, verdict_text = "#f0b429", "#f0b429"
 
-    st.markdown(f'''<div class="p2-interp">
-
-  <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid rgba(128,128,128,0.2);">
-    <div style="padding:4px 14px;border-radius:4px;border:1px solid {verdict_border};background:{verdict_bg};
-                font-size:0.72rem;font-weight:700;letter-spacing:.12em;color:{verdict_text};">{verdict_label}</div>
-    <div style="font-size:0.95rem;color:var(--text-color);font-weight:500;">
-      <b>{sel_label}</b> {strength} correlates <b style="color:{ic_col}">{direction}</b> with next-year returns in <b>{sector}</b>
-    </div>
-  </div>
-
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px;">
-
-    <div style="background:rgba(128,128,128,0.07);border-radius:6px;padding:10px 12px;">
-      <div style="font-size:0.62rem;color:#888;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Signal Strength</div>
-      <div style="font-size:1.1rem;font-weight:700;color:{ic_col};">IC {dd_mean_ic:+.4f}</div>
-      <div style="font-size:0.72rem;color:#888;margin-top:3px;">
-        {"Strong (&gt;0.10)" if abs(dd_mean_ic) > 0.10 else ("Meaningful (0.05–0.10)" if abs(dd_mean_ic) > 0.05 else "Weak (&lt;0.05)")}
-        &nbsp;·&nbsp; range {dd_min_ic:+.3f} to {dd_max_ic:+.3f}
-      </div>
-    </div>
-
-    <div style="background:rgba(128,128,128,0.07);border-radius:6px;padding:10px 12px;">
-      <div style="font-size:0.62rem;color:#888;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Consistency (IC-IR)</div>
-      <div style="font-size:1.1rem;font-weight:700;color:{icir_col_h};">IC-IR {dd_ic_ir:+.3f}</div>
-      <div style="font-size:0.72rem;color:#888;margin-top:3px;">
-        {icir_q.title()} &nbsp;·&nbsp;
-        Hit Rate <span style="color:{hr_col_h};font-weight:600;">{dd_hr:.0f}%</span> of years positive
-      </div>
-    </div>
-
-    <div style="background:rgba(128,128,128,0.07);border-radius:6px;padding:10px 12px;">
-      <div style="font-size:0.62rem;color:#888;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Statistical Confidence</div>
-      <div style="font-size:1.1rem;font-weight:700;color:{sig_col};">{sig_str.split("·")[0].strip()}</div>
-      <div style="font-size:0.72rem;color:#888;margin-top:3px;">
-        {dd_n} years of data &nbsp;·&nbsp;
-        R² <span style="color:{r2_col};font-weight:600;">{dd_r2:.1f}%</span> return variance explained
-      </div>
-    </div>
-
-  </div>
-
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:0.78rem;color:#aaa;line-height:1.6;">
-    <div>
-      <span style="color:#666;font-size:0.68rem;text-transform:uppercase;letter-spacing:.07em;">What IC means &nbsp;</span>
-      Each year: companies ranked by <i>{sel_label}</i>, then by next-year return.
-      IC = Spearman correlation between the two rankings. Averaged across <b style="color:#ccc">{dd_n} independent years</b>.
-    </div>
-    <div>
-      <span style="color:#666;font-size:0.68rem;text-transform:uppercase;letter-spacing:.07em;">Economic size &nbsp;</span>
-      Beta <b style="color:#ccc;">{beta_str}</b> — for each 1-unit increase in this factor,
-      next-year return shifts by that amount on average.
-      IC-IR is the "Sharpe ratio of this factor": <b style="color:#ccc;">&gt;1.5 = consistent, &lt;0.5 = noisy</b>.
-    </div>
-  </div>
-
-</div>''', unsafe_allow_html=True)
+    _ic_strength_label = "Strong (&gt;0.10)" if abs(dd_mean_ic) > 0.10 else ("Meaningful (0.05-0.10)" if abs(dd_mean_ic) > 0.05 else "Weak (&lt;0.05)")
+    _interp_html = (
+        f'<div class="p2-interp">'
+        f'<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid rgba(128,128,128,0.2);">'
+        f'<div style="padding:4px 14px;border-radius:4px;border:1px solid {verdict_border};background:{verdict_bg};font-size:0.72rem;font-weight:700;letter-spacing:.12em;color:{verdict_text};">{verdict_label}</div>'
+        f'<div style="font-size:0.95rem;font-weight:500;"><b>{sel_label}</b> {strength} correlates <b style="color:{ic_col};">{direction}</b> with next-year returns in <b>{sector}</b></div>'
+        f'</div>'
+        f'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px;">'
+        f'<div style="background:rgba(128,128,128,0.07);border-radius:6px;padding:10px 12px;">'
+        f'<div style="font-size:0.62rem;color:#888;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Signal Strength</div>'
+        f'<div style="font-size:1.1rem;font-weight:700;color:{ic_col};">IC {dd_mean_ic:+.4f}</div>'
+        f'<div style="font-size:0.72rem;color:#888;margin-top:3px;">{_ic_strength_label} &nbsp; range {dd_min_ic:+.3f} to {dd_max_ic:+.3f}</div>'
+        f'</div>'
+        f'<div style="background:rgba(128,128,128,0.07);border-radius:6px;padding:10px 12px;">'
+        f'<div style="font-size:0.62rem;color:#888;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Consistency (IC-IR)</div>'
+        f'<div style="font-size:1.1rem;font-weight:700;color:{icir_col_h};">IC-IR {dd_ic_ir:+.3f}</div>'
+        f'<div style="font-size:0.72rem;color:#888;margin-top:3px;">{icir_q.title()} &nbsp; Hit Rate <span style="color:{hr_col_h};font-weight:600;">{dd_hr:.0f}%</span> of years positive</div>'
+        f'</div>'
+        f'<div style="background:rgba(128,128,128,0.07);border-radius:6px;padding:10px 12px;">'
+        f'<div style="font-size:0.62rem;color:#888;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Statistical Confidence</div>'
+        f'<div style="font-size:1.1rem;font-weight:700;color:{sig_col};">{sig_str.split("·")[0].strip()}</div>'
+        f'<div style="font-size:0.72rem;color:#888;margin-top:3px;">{dd_n} years of data &nbsp; R2 <span style="color:{r2_col};font-weight:600;">{dd_r2:.1f}%</span> return variance explained</div>'
+        f'</div>'
+        f'</div>'
+        f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:0.78rem;color:#aaa;line-height:1.6;">'
+        f'<div><span style="color:#666;font-size:0.68rem;text-transform:uppercase;letter-spacing:.07em;">What IC means &nbsp;</span>'
+        f'Each year: companies ranked by <i>{sel_label}</i>, then by next-year return. IC = Spearman rank correlation between those two rankings. Averaged across <b style="color:#ccc;">{dd_n} independent years</b>.</div>'
+        f'<div><span style="color:#666;font-size:0.68rem;text-transform:uppercase;letter-spacing:.07em;">Economic size &nbsp;</span>'
+        f'Beta <b style="color:#ccc;">{beta_str}</b> — for each 1-unit increase in this factor, next-year return shifts by that amount on average. IC-IR is the Sharpe ratio of this factor: <b style="color:#ccc;">&gt;1.5 = consistent, &lt;0.5 = noisy</b>.</div>'
+        f'</div>'
+        f'</div>'
+    )
+    st.markdown(_interp_html, unsafe_allow_html=True)
 
     st.caption(
         "Bars = one year's cross-sectional Rank IC (Spearman) across companies in this sector. "
