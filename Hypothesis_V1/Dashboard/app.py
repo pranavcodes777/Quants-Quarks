@@ -418,20 +418,26 @@ def compute_composite_stats(sector: str, companies: tuple, yr_lo: int, yr_hi: in
         except Exception:
             p_val = float("nan")
 
-        best_single = max((abs(factor_icir_map.get(f, 0.0)) for f in usable), default=0.0)
+        best_single_factor = max(usable, key=lambda f: abs(factor_icir_map.get(f, 0.0)), default=None)
+        best_single        = abs(factor_icir_map.get(best_single_factor, 0.0)) if best_single_factor else 0.0
+        # top 3 factors by |IC-IR| with labels
+        top3 = sorted(usable, key=lambda f: abs(factor_icir_map.get(f, 0.0)), reverse=True)[:3]
+        top3_list = [(FACTOR_META[f]["label"], round(factor_icir_map[f], 3)) for f in top3 if f in FACTOR_META]
 
         group_comp_stats[grp] = {
-            "n_factors":        len(usable),
-            "mean_ic":          round(mic, 4),
-            "ic_ir":            round(ic_ir, 3),
-            "hit_rate":         round(hit_rate, 1),
-            "p_val":            round(p_val, 4) if not np.isnan(p_val) else float("nan"),
-            "n_years":          n,
-            "best_single_icir": round(best_single, 3),
-            "improvement":      round(abs(ic_ir) - best_single, 3),
-            "ic_by_year":       comp_ic_by_year,
-            "scores_by_year":   scores_by_year,
-            "factor_icir":      {f: round(factor_icir_map[f], 3) for f in usable},
+            "n_factors":           len(usable),
+            "mean_ic":             round(mic, 4),
+            "ic_ir":               round(ic_ir, 3),
+            "hit_rate":            round(hit_rate, 1),
+            "p_val":               round(p_val, 4) if not np.isnan(p_val) else float("nan"),
+            "n_years":             n,
+            "best_single_icir":    round(best_single, 3),
+            "best_single_factor":  FACTOR_META.get(best_single_factor, {}).get("label", best_single_factor or "—"),
+            "top3_factors":        top3_list,
+            "improvement":         round(abs(ic_ir) - best_single, 3),
+            "ic_by_year":          comp_ic_by_year,
+            "scores_by_year":      scores_by_year,
+            "factor_icir":         {f: round(factor_icir_map[f], 3) for f in usable},
         }
 
     return retained_per_group, group_comp_stats, factor_icir_map
@@ -1272,6 +1278,36 @@ with tab5:
     grps_sorted = [r["Group"] for r in tbl_rows]
     grp_colors  = [GROUP_COLORS.get(g, "#8b949e") for g in grps_sorted]
 
+    # Build rich hover text for composite bar
+    cmp_hover = []
+    for g in grps_sorted:
+        gs   = group_comp_stats[g]
+        sign = 1 if gs["ic_ir"] >= 0 else -1
+        top3_lines = "<br>".join(
+            f"  {i+1}. {lbl} ({icir:+.3f})"
+            for i, (lbl, icir) in enumerate(gs["top3_factors"])
+        )
+        imp_str = f"+{gs['improvement']:.3f}" if gs["improvement"] >= 0 else f"{gs['improvement']:.3f}"
+        cmp_hover.append(
+            f"<b>{g}</b> — Composite<br>"
+            f"IC-IR: <b>{gs['ic_ir']:+.3f}</b>  |  Hit Rate: {gs['hit_rate']:.0f}%  |  Mean IC: {gs['mean_ic']:+.4f}<br>"
+            f"Improvement over best single: <b>{imp_str}</b><br>"
+            f"<br><b>Top factors in this group:</b><br>{top3_lines}"
+            f"<extra></extra>"
+        )
+
+    # Build rich hover text for best-single bar
+    single_hover = []
+    for g in grps_sorted:
+        gs = group_comp_stats[g]
+        single_hover.append(
+            f"<b>{g}</b> — Best Single Factor<br>"
+            f"Factor: <b>{gs['best_single_factor']}</b><br>"
+            f"IC-IR: <b>{gs['best_single_icir']:+.3f}</b><br>"
+            f"<br><i>Use composite instead? {'Yes ✓' if gs['improvement'] > 0 else 'No — single factor wins'}</i>"
+            f"<extra></extra>"
+        )
+
     fig_cmp = go.Figure()
     fig_cmp.add_trace(go.Bar(
         name="Composite IC-IR",
@@ -1279,7 +1315,7 @@ with tab5:
         y=[group_comp_stats[g]["ic_ir"] for g in grps_sorted],
         marker_color=grp_colors,
         opacity=0.9,
-        hovertemplate="%{x}<br>Composite IC-IR = %{y:.3f}<extra></extra>",
+        hovertemplate=cmp_hover,
     ))
     fig_cmp.add_trace(go.Bar(
         name="Best Single Factor IC-IR",
@@ -1287,17 +1323,22 @@ with tab5:
         y=[group_comp_stats[g]["best_single_icir"] * (1 if group_comp_stats[g]["ic_ir"] >= 0 else -1)
            for g in grps_sorted],
         marker_color="#484f58",
-        opacity=0.7,
-        hovertemplate="%{x}<br>Best Single IC-IR = %{y:.3f}<extra></extra>",
+        opacity=0.75,
+        text=[group_comp_stats[g]["best_single_factor"] for g in grps_sorted],
+        textposition="outside",
+        textfont=dict(size=8, color="#8b949e"),
+        hovertemplate=single_hover,
     ))
     fig_cmp.add_hline(y=0, line_color=_LINE, line_dash="dot", line_width=1)
     fig_cmp.update_layout(**_PLY,
-        title="Composite IC-IR vs Best Single Factor IC-IR — per group",
-        height=320, showlegend=True,
+        title="Composite IC-IR vs Best Single Factor — hover a bar to see factor names & top-3 breakdown",
+        height=400, showlegend=True,
         barmode="group",
+        margin=dict(l=0, r=0, t=45, b=80),
         legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=9)),
-        xaxis=dict(tickangle=-30, showgrid=False),
-        yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False),
+        xaxis=dict(tickangle=-30, showgrid=False, tickfont=dict(size=9.5)),
+        yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False, tickformat=".3f"),
+        hoverlabel=dict(bgcolor="#1c2128", font_size=11, font_family="monospace"),
     )
     st.plotly_chart(fig_cmp, use_container_width=True)
 
