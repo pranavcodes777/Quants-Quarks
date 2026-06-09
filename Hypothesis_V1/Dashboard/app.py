@@ -1390,21 +1390,50 @@ with tab5:
             # Year-by-year style IC chart
             yy_sdf = pd.DataFrame([{"Year": str(int(y)), "IC": round(v, 4)}
                                     for y, v in sorted(style_ic_by_yr.items())])
+            st_colors     = ["#3fb950" if v >= 0 else "#f85149" for v in yy_sdf["IC"]]
+            st_above_mean = [abs(v) > abs(s_mic) for v in yy_sdf["IC"]]
+            st_opacity    = [0.95 if a else 0.6 for a in st_above_mean]
+
             fig_st = go.Figure()
             fig_st.add_trace(go.Bar(
                 x=yy_sdf["Year"], y=yy_sdf["IC"],
-                marker_color=["#3fb950" if v >= 0 else "#f85149" for v in yy_sdf["IC"]],
-                hovertemplate="FY%{x}<br>Style IC = %{y:.4f}<extra></extra>",
+                marker_color=st_colors,
+                marker_opacity=st_opacity,
+                marker_line_width=0,
+                text=[f"{v:+.3f}" for v in yy_sdf["IC"]],
+                textposition="outside",
+                textfont=dict(size=9),
+                customdata=[[
+                    "above" if v >= 0 else "below",
+                    "stronger" if abs(v) > abs(s_mic) else "weaker"
+                ] for v in yy_sdf["IC"]],
+                hovertemplate=(
+                    "<b>FY %{x}</b><br>"
+                    "Style IC = <b>%{y:+.4f}</b><br>"
+                    "vs Mean (%{customdata[1]} than avg)<br>"
+                    "<extra></extra>"
+                ),
             ))
             fig_st.add_hline(y=0,     line_color=_LINE,    line_dash="dot",   line_width=1)
-            fig_st.add_hline(y=s_mic, line_color="#f0b429", line_dash="solid", line_width=2,
-                             annotation_text=f"Mean = {s_mic:+.4f}",
-                             annotation_font_color="#f0b429", annotation_position="top right")
+            fig_st.add_hline(y=s_mic, line_color="#f0b429", line_dash="solid", line_width=1.5,
+                             annotation_text=f"Mean {s_mic:+.4f}",
+                             annotation_font_color="#f0b429", annotation_position="top right",
+                             annotation_font_size=10)
+            # +1 std band
+            if s_sic > 0:
+                fig_st.add_hrect(y0=s_mic - s_sic, y1=s_mic + s_sic,
+                                 fillcolor="rgba(240,180,41,0.06)", line_width=0,
+                                 annotation_text="±1σ", annotation_position="top left",
+                                 annotation_font_color="#f0b429", annotation_font_size=9)
             fig_st.update_layout(**_PLY,
                 title=f"Style Composite — {' + '.join(sel_style)}  |  IC-IR {s_icir:+.3f}  |  Hit Rate {s_hr:.0f}%",
-                height=280,
-                xaxis=dict(type="category", showgrid=False),
-                yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False),
+                height=360,
+                margin=dict(l=0, r=0, t=45, b=0),
+                xaxis=dict(type="category", showgrid=False, tickfont=dict(size=10)),
+                yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False,
+                           tickformat="+.2f", tickfont=dict(size=9)),
+                bargap=0.25,
+                hovermode="x unified",
             )
             st.plotly_chart(fig_st, use_container_width=True)
 
