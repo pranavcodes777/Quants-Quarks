@@ -1006,6 +1006,7 @@ with tab4:
 
     # ── Deep Dive ─────────────────────────────────────────────────────────────
     st.markdown('<div class="section-hd">Factor Deep Dive</div>', unsafe_allow_html=True)
+    st.markdown('<p style="color:#f0b429;font-size:0.7rem;">v2 loaded</p>', unsafe_allow_html=True)
 
     sel_label    = st.selectbox("Select factor", ic_all["Factor"].tolist(), key="p2_deep")
     sel_row      = ic_all[ic_all["Factor"] == sel_label].iloc[0]
@@ -1108,28 +1109,64 @@ with tab4:
         yy_df   = pd.DataFrame([{"Year": str(int(y)), "IC": round(v, 4)}
                                  for y, v in sorted(dd_ic_by_yr.items())])
         mean_ic = yy_df["IC"].mean()
+        std_ic  = yy_df["IC"].std()
         pct_pos = (yy_df["IC"] > 0).mean() * 100
 
+        bar_colors = []
+        for v in yy_df["IC"]:
+            if v >= 0.10:  bar_colors.append("#3fb950")
+            elif v >= 0:   bar_colors.append("#56d364")
+            elif v >= -0.10: bar_colors.append("#ff7b72")
+            else:          bar_colors.append("#f85149")
+
         fig_yy = go.Figure()
+        # ±1σ band
+        fig_yy.add_hrect(
+            y0=mean_ic - std_ic, y1=mean_ic + std_ic,
+            fillcolor="rgba(240,180,41,0.07)", line_width=0,
+            annotation_text="+/-1 SD band", annotation_position="top left",
+            annotation_font=dict(color="rgba(240,180,41,0.5)", size=9),
+        )
         fig_yy.add_trace(go.Bar(
             x=yy_df["Year"], y=yy_df["IC"],
-            marker_color=["#3fb950" if v >= 0 else "#f85149" for v in yy_df["IC"]],
-            hovertemplate="FY%{x}<br>Rank IC = %{y:.4f}<extra></extra>",
+            marker_color=bar_colors,
+            text=[f"{v:+.3f}" for v in yy_df["IC"]],
+            textposition="outside",
+            textfont=dict(size=9, color="#888888"),
+            hovertemplate=(
+                "<b>FY%{x}</b><br>"
+                "Rank IC = <b>%{y:.4f}</b><br>"
+                "<span style='color:#aaa'>Positive IC = higher-ranked stocks beat lower-ranked</span>"
+                "<extra></extra>"
+            ),
+            cliponaxis=False,
         ))
-        fig_yy.add_hline(y=0,       line_color=_LINE,    line_dash="dot",   line_width=1)
+        fig_yy.add_hline(y=0,       line_color=_LINE,     line_dash="dot",   line_width=1)
         fig_yy.add_hline(y=mean_ic, line_color="#f0b429", line_dash="solid", line_width=2,
                          annotation_text=f"Mean = {mean_ic:+.4f}",
                          annotation_font_color="#f0b429", annotation_position="top right")
+        # Threshold reference lines
+        fig_yy.add_hline(y=0.10,  line_color="rgba(63,185,80,0.25)",  line_dash="dot", line_width=1)
+        fig_yy.add_hline(y=-0.10, line_color="rgba(248,81,73,0.25)",  line_dash="dot", line_width=1)
+
         fig_yy.update_layout(**_PLY,
-            title=f"Year-by-Year Cross-Sectional Rank IC  |  Hit Rate {pct_pos:.0f}%  |  IC-IR {dd_ic_ir:+.3f}",
-            height=290,
-            xaxis=dict(type="category", showgrid=False),
-            yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False),
+            title=dict(
+                text=f"Year-by-Year Cross-Sectional Rank IC  |  Hit Rate {pct_pos:.0f}%  |  IC-IR {dd_ic_ir:+.3f}",
+                font=dict(size=13),
+            ),
+            height=420,
+            xaxis=dict(type="category", showgrid=False, tickfont=dict(size=11)),
+            yaxis=dict(
+                showgrid=True, gridcolor=_GRID, zeroline=False,
+                tickformat=".2f", range=[min(-0.05, yy_df["IC"].min() * 1.35),
+                                          max(0.05,  yy_df["IC"].max() * 1.35)],
+            ),
+            margin=dict(l=10, r=10, t=50, b=10),
         )
         st.plotly_chart(fig_yy, use_container_width=True)
 
-    # ── Scatter: all years pooled — visual reference ───────────────────────────
-    scat = df_ic[[sel_key, "Return_1Y_Fwd", "Company", "year"]].dropna()
+    # ── Scatter: all years pooled — color-coded by year ────────────────────────
+    scat = df_ic[[sel_key, "Return_1Y_Fwd", "Company", "year"]].dropna().copy()
     if len(scat) >= 5:
         try:
             _sl, _ic_v, _, _, _ = _linregress(scat[sel_key].values, scat["Return_1Y_Fwd"].values)
@@ -1138,58 +1175,172 @@ with tab4:
         except Exception:
             ols_ok = False
 
+        # Colour points by year (spectral gradient)
+        years_sorted = sorted(scat["year"].unique())
+        yr_idx       = {yr: i for i, yr in enumerate(years_sorted)}
+        n_yrs        = max(len(years_sorted) - 1, 1)
+        import colorsys
+        def _yr_color(yr):
+            t   = yr_idx[yr] / n_yrs
+            r, g, b = colorsys.hsv_to_rgb(0.67 - 0.55 * t, 0.75, 0.90)
+            return f"rgb({int(r*255)},{int(g*255)},{int(b*255)})"
+
+        scat["_color"] = scat["year"].map(_yr_color)
+        scat["_size"]  = 8
+
+        # Flag outliers (|return| > 2σ or extreme factor value) for label
+        ret_std = scat["Return_1Y_Fwd"].std()
+        fac_std = scat[sel_key].std()
+        scat["_outlier"] = (
+            (scat["Return_1Y_Fwd"].abs() > 2 * ret_std) |
+            (scat[sel_key].abs()          > 2 * fac_std)
+        )
+
         fig_sc = go.Figure()
-        fig_sc.add_trace(go.Scatter(
-            x=scat[sel_key], y=scat["Return_1Y_Fwd"],
-            mode="markers",
-            marker=dict(color="#3fb950", size=6, opacity=0.65),
-            customdata=scat[["Company", "year"]].values,
-            hovertemplate=(
-                "<b>%{customdata[0]}</b>  FY%{customdata[1]}<br>"
-                + sel_label + ": %{x:.3f}<br>Fwd Return: %{y:.1f}%<extra></extra>"
-            ),
-        ))
+
+        # Render one trace per year for the legend
+        for yr in years_sorted:
+            yr_data = scat[scat["year"] == yr]
+            col     = _yr_color(yr)
+            fig_sc.add_trace(go.Scatter(
+                x=yr_data[sel_key], y=yr_data["Return_1Y_Fwd"],
+                mode="markers",
+                name=f"FY{yr}",
+                marker=dict(color=col, size=7, opacity=0.80,
+                            line=dict(color="rgba(0,0,0,0.25)", width=0.5)),
+                customdata=yr_data[["Company", "year"]].values,
+                hovertemplate=(
+                    "<b>%{customdata[0]}</b>  FY%{customdata[1]}<br>"
+                    + sel_label + ": <b>%{x:.3f}</b><br>"
+                    "Fwd Return: <b>%{y:.1f}%</b><extra></extra>"
+                ),
+            ))
+
+        # Outlier text labels
+        out = scat[scat["_outlier"]]
+        if len(out):
+            fig_sc.add_trace(go.Scatter(
+                x=out[sel_key], y=out["Return_1Y_Fwd"],
+                mode="text",
+                text=out["Company"] + " '" + out["year"].astype(str).str[-2:],
+                textfont=dict(size=8, color="rgba(160,160,160,0.8)"),
+                textposition="top center",
+                showlegend=False,
+                hoverinfo="skip",
+            ))
+
         if ols_ok:
             fig_sc.add_trace(go.Scatter(
                 x=[xlo, xhi],
                 y=[_ic_v + _sl * xlo, _ic_v + _sl * xhi],
-                mode="lines", line=dict(color="#f0b429", width=1.5, dash="dot"),
-                showlegend=False,
+                mode="lines",
+                name="OLS trend",
+                line=dict(color="#f0b429", width=2, dash="dash"),
+                showlegend=True,
             ))
+
         fig_sc.add_hline(y=0, line_color=_LINE, line_dash="dot", line_width=1)
         fig_sc.update_layout(**_PLY,
-            title=f"{sel_label}  vs  Next-Year Return  ·  all years pooled (visual reference)",
-            height=390,
+            title=dict(
+                text=f"{sel_label}  vs  Next-Year Return  -  all years pooled  (each colour = one year)",
+                font=dict(size=12),
+            ),
+            height=480,
             xaxis=dict(title=sel_label,         showgrid=True, gridcolor=_GRID),
             yaxis=dict(title="Forward Return %", showgrid=True, gridcolor=_GRID, zeroline=False),
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
+                font=dict(size=9), itemsizing="constant",
+            ),
+            margin=dict(l=10, r=10, t=60, b=10),
         )
         st.plotly_chart(fig_sc, use_container_width=True)
 
-    # ── Interpretation box ────────────────────────────────────────────────────
-    direction = "positively" if dd_mean_ic > 0 else "negatively"
-    strength  = "strongly" if abs(dd_mean_ic) > 0.15 else ("meaningfully" if abs(dd_mean_ic) > 0.07 else "weakly")
+    # ── Interpretation box — verdict-first, scannable ─────────────────────────
+    direction   = "positively" if dd_mean_ic > 0 else "negatively"
+    strength    = "strongly" if abs(dd_mean_ic) > 0.15 else ("meaningfully" if abs(dd_mean_ic) > 0.07 else "weakly")
+    ic_col      = "#3fb950" if dd_mean_ic > 0.05 else ("#f0b429" if dd_mean_ic > 0 else "#f85149")
+    icir_col_h  = "#3fb950" if abs(dd_ic_ir) > 1.5 else ("#f0b429" if abs(dd_ic_ir) > 0.5 else "#f85149")
+    hr_col_h    = "#3fb950" if dd_hr >= 65 else ("#f0b429" if dd_hr >= 50 else "#f85149")
+    sig_col     = "#3fb950" if dd_pval < 0.05 else ("#f0b429" if dd_pval < 0.10 else "#f85149")
+    r2_col      = "#3fb950" if dd_r2 >= 10 else ("#f0b429" if dd_r2 >= 4 else "#8b949e")
+
+    # overall verdict
+    is_usable = (abs(dd_mean_ic) >= 0.05 and dd_pval <= 0.10 and dd_hr >= 50)
+    if abs(dd_mean_ic) > 0.12 and dd_ic_ir > 1.0 and dd_pval < 0.05:
+        verdict_label, verdict_bg = "STRONG SIGNAL", "#1a4731"
+        verdict_border, verdict_text = "#3fb950", "#3fb950"
+    elif is_usable:
+        verdict_label, verdict_bg = "USABLE SIGNAL", "#1a3a20"
+        verdict_border, verdict_text = "#56d364", "#56d364"
+    elif dd_pval > 0.10:
+        verdict_label, verdict_bg = "NOT SIGNIFICANT", "#3d1f1f"
+        verdict_border, verdict_text = "#f85149", "#f85149"
+    else:
+        verdict_label, verdict_bg = "WEAK / NOISY", "#2d2510"
+        verdict_border, verdict_text = "#f0b429", "#f0b429"
 
     st.markdown(f'''<div class="p2-interp">
-      <p><b>{sel_label}</b> {strength} and {hr_q} correlates {direction} with next-year returns in <b>{sector}</b>.</p>
-      <p><b>Mean IC {dd_mean_ic:+.4f}</b> &mdash; Average Spearman rank correlation across {dd_n} independent years.
-         Each year: all companies ranked by this factor, then ranked by next-year return — Spearman correlation between the two rankings.
-         Benchmark: |IC| &gt; 0.05 = meaningful signal, &gt; 0.10 = strong.</p>
-      <p><b>IC-IR {dd_ic_ir:+.3f}</b> &mdash; Mean IC &divide; Std(IC). The Sharpe ratio of this factor.
-         This signal is <b>{icir_q}</b>.
-         IC-IR &gt; 1.5 = consistently directional across years. &lt; 0.5 = too noisy to rely on alone.</p>
-      <p><b>Hit Rate {dd_hr:.0f}%</b> &mdash; The factor had a positive IC in {dd_hr:.0f}% of years.
-         Range this year to worst: {dd_min_ic:+.3f} to {dd_max_ic:+.3f} (yellow = mean on range bar above).</p>
-      <p><b>{sig_str}</b> &mdash; t-test on the {dd_n} annual IC values. Tests whether mean IC is genuinely non-zero.</p>
-      <p><b>R² {dd_r2:.1f}%</b> &mdash; Mean IC squared. Roughly: this factor alone explains {dd_r2:.1f}% of the cross-sectional return variance each year (in rank space).
-         In factor investing 2–5% is normal, 10%+ is exceptional for a single metric.</p>
-      <p><b>Beta {beta_str}</b> &mdash; Average year-by-year OLS slope. For each 1-unit increase in <i>{sel_label}</i>, next-year return changes by {beta_str} on average.
-         This is the raw sensitivity — use it to gauge economic magnitude, not just direction.</p>
-    </div>''', unsafe_allow_html=True)
+
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid rgba(128,128,128,0.2);">
+    <div style="padding:4px 14px;border-radius:4px;border:1px solid {verdict_border};background:{verdict_bg};
+                font-size:0.72rem;font-weight:700;letter-spacing:.12em;color:{verdict_text};">{verdict_label}</div>
+    <div style="font-size:0.95rem;color:var(--text-color);font-weight:500;">
+      <b>{sel_label}</b> {strength} correlates <b style="color:{ic_col}">{direction}</b> with next-year returns in <b>{sector}</b>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px;">
+
+    <div style="background:rgba(128,128,128,0.07);border-radius:6px;padding:10px 12px;">
+      <div style="font-size:0.62rem;color:#888;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Signal Strength</div>
+      <div style="font-size:1.1rem;font-weight:700;color:{ic_col};">IC {dd_mean_ic:+.4f}</div>
+      <div style="font-size:0.72rem;color:#888;margin-top:3px;">
+        {"Strong (&gt;0.10)" if abs(dd_mean_ic) > 0.10 else ("Meaningful (0.05–0.10)" if abs(dd_mean_ic) > 0.05 else "Weak (&lt;0.05)")}
+        &nbsp;·&nbsp; range {dd_min_ic:+.3f} to {dd_max_ic:+.3f}
+      </div>
+    </div>
+
+    <div style="background:rgba(128,128,128,0.07);border-radius:6px;padding:10px 12px;">
+      <div style="font-size:0.62rem;color:#888;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Consistency (IC-IR)</div>
+      <div style="font-size:1.1rem;font-weight:700;color:{icir_col_h};">IC-IR {dd_ic_ir:+.3f}</div>
+      <div style="font-size:0.72rem;color:#888;margin-top:3px;">
+        {icir_q.title()} &nbsp;·&nbsp;
+        Hit Rate <span style="color:{hr_col_h};font-weight:600;">{dd_hr:.0f}%</span> of years positive
+      </div>
+    </div>
+
+    <div style="background:rgba(128,128,128,0.07);border-radius:6px;padding:10px 12px;">
+      <div style="font-size:0.62rem;color:#888;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Statistical Confidence</div>
+      <div style="font-size:1.1rem;font-weight:700;color:{sig_col};">{sig_str.split("·")[0].strip()}</div>
+      <div style="font-size:0.72rem;color:#888;margin-top:3px;">
+        {dd_n} years of data &nbsp;·&nbsp;
+        R² <span style="color:{r2_col};font-weight:600;">{dd_r2:.1f}%</span> return variance explained
+      </div>
+    </div>
+
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:0.78rem;color:#aaa;line-height:1.6;">
+    <div>
+      <span style="color:#666;font-size:0.68rem;text-transform:uppercase;letter-spacing:.07em;">What IC means &nbsp;</span>
+      Each year: companies ranked by <i>{sel_label}</i>, then by next-year return.
+      IC = Spearman correlation between the two rankings. Averaged across <b style="color:#ccc">{dd_n} independent years</b>.
+    </div>
+    <div>
+      <span style="color:#666;font-size:0.68rem;text-transform:uppercase;letter-spacing:.07em;">Economic size &nbsp;</span>
+      Beta <b style="color:#ccc;">{beta_str}</b> — for each 1-unit increase in this factor,
+      next-year return shifts by that amount on average.
+      IC-IR is the "Sharpe ratio of this factor": <b style="color:#ccc;">&gt;1.5 = consistent, &lt;0.5 = noisy</b>.
+    </div>
+  </div>
+
+</div>''', unsafe_allow_html=True)
 
     st.caption(
-        "Method: Cross-Sectional Rank IC (Spearman). "
-        "Each bar = one independent year's rank correlation across companies in this sector. "
-        "Scatter is all years pooled — visual reference only; statistics come from the bar chart above."
+        "Bars = one year's cross-sectional Rank IC (Spearman) across companies in this sector. "
+        "Scatter is all years pooled — visual only; statistics derive from the bars. "
+        "Green dashed thresholds on bar chart = IC ±0.10 reference lines."
     )
 
 
