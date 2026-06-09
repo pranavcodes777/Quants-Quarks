@@ -347,10 +347,9 @@ def compute_composite_stats(sector: str, companies: tuple, yr_lo: int, yr_hi: in
             retained_per_group[grp] = grp_fs
             continue
         try:
-            gc  = compute_corr(df_c[grp_fs].dropna(how="all"), method)
-            go_ = cluster_order(gc)
-            gco = gc.loc[go_, go_]
-            gg  = find_redundant_groups(gco, threshold)
+            sub = df_c[grp_fs].dropna(how="all")
+            gc  = sub.corr(method=method.lower())
+            gg  = find_redundant_groups(gc, threshold)
             gr  = {d for v in gg.values() for d in v}
             retained_per_group[grp] = [f for f in grp_fs if f not in gr]
         except Exception:
@@ -852,7 +851,7 @@ with tab4:
     st.markdown('<div class="section-hd">Factor Groups to Analyse</div>', unsafe_allow_html=True)
     all_grps_p2 = list(dict.fromkeys(FACTOR_META[f]["group"] for f in avail if f in FACTOR_META))
     sel_grps_p2 = st.multiselect("p2g", all_grps_p2, default=all_grps_p2,
-                                  label_visibility="collapsed", key="p2_groups")
+                                  label_visibility="collapsed", key=f"p2_groups_{len(all_grps_p2)}")
     p2_factors  = [f for f in avail if FACTOR_META.get(f, {}).get("group") in sel_grps_p2]
 
     # ── Filters + column toggles ──────────────────────────────────────────────
