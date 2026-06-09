@@ -665,17 +665,21 @@ with tab1:
                 unsafe_allow_html=True,
             )
         st.markdown(
-            f"<br><small style='color:rgba(128,128,128,0.5)'>{len(retained)} of {len(order)} factors retained</small>",
+            f"<br><small style='color:rgba(128,128,128,0.5)'>{len(retained)} of {len(an_order)} factors retained</small>",
             unsafe_allow_html=True,
         )
 
-    st.download_button(
-        "↓ Export Correlation Matrix (CSV)",
-        corr_o.rename(columns={f: _label(f) for f in corr_o.columns},
-                      index={f: _label(f) for f in corr_o.index}).to_csv(),
-        file_name=f"corr_{sector}_{method}.csv",
-        mime="text/csv",
-    )
+    if show_heatmap and 'corr_o' in dir():
+        def _label_exp(f):
+            if f == "Return_1Y_Fwd": return "Fwd Return 1Y"
+            return FACTOR_META.get(f, {}).get("label", f)
+        st.download_button(
+            "Export Correlation Matrix (CSV)",
+            corr_o.rename(columns={f: _label_exp(f) for f in corr_o.columns},
+                          index={f: _label_exp(f) for f in corr_o.index}).to_csv(),
+            file_name=f"corr_{sector}_{method}.csv",
+            mime="text/csv",
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
