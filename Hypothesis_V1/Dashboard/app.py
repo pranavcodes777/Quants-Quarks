@@ -211,6 +211,23 @@ FACTOR_META: dict[str, dict] = {
     "OPM_Quarterly_Vol":        {"label": "Quarterly OPM Volatility",    "group": "Quarterly", "desc": "Standard deviation of quarterly operating margins over ~3 years. High = margins fluctuate significantly quarter to quarter."},
     "Qtr_Profit_Consistency":   {"label": "Quarterly Profit Consistency %","group": "Quarterly", "desc": "% of recent quarters with positive net profit. 100% = never had a loss quarter. Useful for screening cyclical vs defensive businesses."},
     "Recent_Revenue_Momentum":  {"label": "Recent Revenue Momentum %",   "group": "Quarterly", "desc": "Year-on-year revenue growth in the most recent quarter. Near-term momentum signal — captures current business velocity before annual data is available."},
+
+    # ── Valuation ────────────────────────────────────────────────────────────────
+    "PE_Ratio":       {"label": "P/E Ratio",               "group": "Valuation", "desc": "Market Cap / Net Profit. How much the market pays per rupee of earnings. Low P/E = cheaper (value). Negative for loss-making companies."},
+    "PB_Ratio":       {"label": "P/B Ratio",               "group": "Valuation", "desc": "Market Cap / Book Value (Equity Capital + Reserves). Low P/B = trading near or below asset value. Asset-heavy sectors (banks, metals) typically have lower P/B than capital-light (IT, FMCG)."},
+    "EV_EBITDA":      {"label": "EV / EBITDA",             "group": "Valuation", "desc": "Enterprise Value divided by (Operating Profit + Depreciation). Capital-structure-neutral valuation; preferred for comparing companies with different debt levels. Lower = cheaper."},
+    "EV_Sales":       {"label": "EV / Sales",              "group": "Valuation", "desc": "Enterprise Value divided by Revenue. Useful when profits are thin or negative. Low = market assigns low value to each rupee of revenue (value opportunity or structural concern)."},
+    "Mkt_Cap_Log":    {"label": "Log Market Cap",          "group": "Valuation", "desc": "Log10 of market capitalisation in crore. Pure size factor — log scale normalises the wide range (hundreds to lakhs of crore). Small-cap effect: historically smaller stocks outperform large-caps over long periods."},
+    "Div_Yield":      {"label": "Dividend Yield %",        "group": "Valuation", "desc": "Annual dividend per share / price × 100. High yield = income return; may also signal value (cheap price) or distress. Computed as (Dividend Payout % x EPS) / Price."},
+    "Price_to_CFO":   {"label": "Price / CFO",             "group": "Valuation", "desc": "Market Cap / Cash from Operations. Lower = company generates more operating cash relative to its price. More conservative than P/E because CFO is harder to manipulate than reported profit."},
+    "Price_to_FCF":   {"label": "Price / FCF",             "group": "Valuation", "desc": "Market Cap / Free Cash Flow (CFO minus capex). Cleanest valuation metric — values only the cash left for shareholders after maintaining and growing the business. Low = attractive."},
+
+    # ── Momentum ─────────────────────────────────────────────────────────────────
+    "Mom_12m":        {"label": "Momentum 12m %",          "group": "Momentum", "desc": "12-month price return ending March 31 of this FY (Apr to Mar). Captures the full-year trend. Historically, high 12m momentum predicts further outperformance in the near term."},
+    "Mom_6m":         {"label": "Momentum 6m %",           "group": "Momentum", "desc": "6-month price return: Oct 1 to Mar 31. Medium-term trend signal. Less noisy than 3m, more recent than 12m."},
+    "Mom_3m":         {"label": "Momentum 3m %",           "group": "Momentum", "desc": "3-month price return: Jan 1 to Mar 31. Short-term trend. High sensitivity to recent catalysts (earnings, guidance). Can revert more quickly than longer windows."},
+    "Mom_12m_1m":     {"label": "Momentum 12m-1m %",       "group": "Momentum", "desc": "12-month return skipping the last month (Apr to Feb). The classic Jegadeesh-Titman (1993) momentum definition. Skipping last month reduces short-term reversal noise, giving a purer intermediate-trend signal."},
+    "Realized_Vol_90d":{"label": "Realized Volatility 90d %","group": "Momentum", "desc": "Annualised standard deviation of daily log-returns over the 90 days before March 31. Measures recent price riskiness. High vol = uncertain path; historically associated with lower risk-adjusted returns (low-volatility anomaly)."},
 }
 
 FACTOR_COLS  = list(FACTOR_META.keys())
@@ -232,6 +249,8 @@ GROUP_COLORS = {
     "Consistency":       "#80cbc4",
     "Asset Detail":      "#90caf9",
     "Quarterly":         "#ffcc02",
+    "Valuation":         "#f97583",
+    "Momentum":          "#b39ddb",
 }
 
 
