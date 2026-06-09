@@ -20,20 +20,6 @@ from factor_builder import SECTORS
 
 _DB_PATH = os.path.join(os.path.dirname(__file__), "..", "Database", "bs_factors.parquet")
 
-# ── Theme palettes (defined early — CSS block uses T before FACTOR_META loads) ─
-_DARK = {
-    "bg": "#0d1117", "surface": "#161b22", "surface2": "#21262d",
-    "border": "#21262d", "text": "#e6edf3", "text_muted": "#8b949e",
-    "text_dim": "#484f58", "paper_bg": "rgba(0,0,0,0)", "plot_bg": "rgba(0,0,0,0)",
-    "grid": "#21262d", "line": "#484f58", "sidebar_bg": "#0d1117",
-}
-_LIGHT = {
-    "bg": "#ffffff", "surface": "#f6f8fa", "surface2": "#eaeef2",
-    "border": "#d0d7de", "text": "#1f2328", "text_muted": "#57606a",
-    "text_dim": "#9198a1", "paper_bg": "rgba(0,0,0,0)", "plot_bg": "rgba(0,0,0,0)",
-    "grid": "#eaeef2", "line": "#9198a1", "sidebar_bg": "#f6f8fa",
-}
-
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Hypothesis V1 · Factor Research",
@@ -42,74 +28,54 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Theme → palette ────────────────────────────────────────────────────────────
-# theme is set inside the sidebar block below; we need a default here so the
-# CSS block (which runs before sidebar widgets) can reference it.
-# Streamlit re-runs top-to-bottom so on the first render theme="Dark" (default).
-# After the user picks a theme the sidebar widget returns the chosen value and
-# the whole script re-runs with the correct T.
-try:
-    _theme_val = st.session_state.get("app_theme", "Dark")
-except Exception:
-    _theme_val = "Dark"
-T = _DARK if _theme_val != "Light" else _LIGHT
-
-# ── CSS ────────────────────────────────────────────────────────────────────────
-st.markdown(f"""
+# ── CSS — uses Streamlit CSS variables so dark/light toggle (⋮ → Settings) works
+st.markdown("""
 <style>
-  .stApp {{ background-color: {T["bg"]}; }}
-  [data-testid="stSidebar"] {{ background: {T["sidebar_bg"]}; border-right: 1px solid {T["border"]}; }}
-  .block-container {{ padding: 1.2rem 2rem 2rem; }}
-  div[data-testid="stTabs"] button {{ font-size: 0.78rem; letter-spacing: 0.06em; color: {T["text_muted"]}; }}
+  .block-container { padding: 1.2rem 2rem 2rem; }
+  div[data-testid="stTabs"] button { font-size: 0.78rem; letter-spacing: 0.06em; }
 
-  /* Streamlit native text overrides */
-  .stApp p, .stApp label, .stApp .stMarkdown p {{ color: {T["text_muted"]}; }}
-  [data-testid="stMetricValue"] {{ color: {T["text"]} !important; }}
-  [data-testid="stMetricLabel"] {{ color: {T["text_muted"]} !important; }}
-  [data-testid="stCaptionContainer"] p {{ color: {T["text_dim"]} !important; }}
+  .kpi-wrap { display: flex; gap: 12px; margin-bottom: 1.4rem; }
+  .kpi {
+    background: var(--secondary-background-color);
+    border: 1px solid rgba(128,128,128,0.2);
+    border-radius: 7px; padding: 12px 18px; flex: 1; min-width: 0;
+  }
+  .kpi .num { font-size: 1.75rem; font-weight: 700; color: var(--text-color); line-height: 1; }
+  .kpi .lbl { font-size: 0.65rem; color: var(--text-color); opacity: 0.45;
+              text-transform: uppercase; letter-spacing: 0.09em; margin-top: 4px; }
 
-  .kpi-wrap {{ display: flex; gap: 12px; margin-bottom: 1.4rem; }}
-  .kpi {{
-    background: {T["surface"]}; border: 1px solid {T["border"]}; border-radius: 7px;
-    padding: 12px 18px; flex: 1; min-width: 0;
-  }}
-  .kpi .num {{ font-size: 1.75rem; font-weight: 700; color: {T["text"]}; line-height: 1; }}
-  .kpi .lbl {{ font-size: 0.65rem; color: {T["text_dim"]}; text-transform: uppercase;
-              letter-spacing: 0.09em; margin-top: 4px; }}
-
-  .section-hd {{
+  .section-hd {
     font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em;
-    color: {T["text_dim"]}; margin: 1.2rem 0 0.6rem;
-  }}
-  .chip {{
+    color: var(--text-color); opacity: 0.35; margin: 1.2rem 0 0.6rem;
+  }
+  .chip {
     display: inline-block; padding: 2px 9px; border-radius: 10px;
     font-size: 0.7rem; font-family: 'SF Mono', 'Fira Code', monospace; margin: 2px 3px;
-  }}
-  .chip-r {{ background: #3d1a1a; border: 1px solid #da3633; color: #f85149; }}
-  .chip-g {{ background: #0d2818; border: 1px solid #2ea043; color: #3fb950; }}
-  .chip-b {{ background: #0c1e32; border: 1px solid #1f6feb; color: #58a6ff; }}
+  }
+  .chip-r { background: #3d1a1a; border: 1px solid #da3633; color: #f85149; }
+  .chip-g { background: #0d2818; border: 1px solid #2ea043; color: #3fb950; }
+  .chip-b { background: #0c1e32; border: 1px solid #1f6feb; color: #58a6ff; }
 
-  .insight-box {{
-    background: {T["surface"]}; border: 1px solid {T["border"]}; border-radius: 7px;
-    padding: 14px 16px; margin-top: 8px;
-  }}
-  .insight-box p {{ margin: 0 0 4px; font-size: 0.78rem; color: {T["text_muted"]}; line-height: 1.6; }}
-  .insight-box b {{ color: {T["text"]}; }}
+  .insight-box {
+    background: var(--secondary-background-color);
+    border: 1px solid rgba(128,128,128,0.2);
+    border-radius: 7px; padding: 14px 16px; margin-top: 8px;
+  }
+  .insight-box p { margin: 0 0 4px; font-size: 0.78rem; color: var(--text-color); opacity: 0.7; line-height: 1.6; }
+  .insight-box b { color: var(--text-color); opacity: 1; }
 
-  /* Tab 4 bars */
-  .p2-bar-track {{ background: {T["surface2"]}; border-radius: 4px; height: 8px; width: 100%; margin: 4px 0 10px; }}
-  .p2-bar-fill  {{ height: 8px; border-radius: 4px; }}
-  .p2-mid-wrap  {{ position: relative; height: 8px; background: {T["surface2"]}; border-radius: 4px; margin: 4px 0 10px; }}
-  .p2-interp    {{ background: {T["surface"]}; border: 1px solid {T["border"]}; border-radius: 8px; padding: 16px 20px; margin-top: 14px; }}
-  .p2-interp p  {{ margin: 0 0 8px; font-size: 0.82rem; color: {T["text_muted"]}; line-height: 1.7; }}
-  .p2-interp b  {{ color: {T["text"]}; }}
-  .p2-stat-row  {{ display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }}
+  .p2-bar-track { background: rgba(128,128,128,0.15); border-radius:4px; height:8px; width:100%; margin:4px 0 10px; }
+  .p2-bar-fill  { height:8px; border-radius:4px; }
+  .p2-mid-wrap  { position:relative; height:8px; background:rgba(128,128,128,0.15); border-radius:4px; margin:4px 0 10px; }
+  .p2-interp    { background:var(--secondary-background-color); border:1px solid rgba(128,128,128,0.2); border-radius:8px; padding:16px 20px; margin-top:14px; }
+  .p2-interp p  { margin:0 0 8px; font-size:0.82rem; color:var(--text-color); opacity:0.7; line-height:1.7; }
+  .p2-interp b  { color:var(--text-color); opacity:1; }
+  .p2-stat-row  { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
 
-  /* Tab 5 */
-  .ac-hd  {{ font-size: 0.65rem; text-transform: uppercase; letter-spacing: .1em; color: {T["text_dim"]}; margin: 1.2rem 0 .5rem; }}
-  .ac-card {{ background: {T["surface"]}; border: 1px solid {T["border"]}; border-radius: 8px; padding: 14px 18px; margin-bottom: 8px; }}
-  .ac-card p {{ margin: 0 0 4px; font-size: .79rem; color: {T["text_muted"]}; line-height: 1.65; }}
-  .ac-card b {{ color: {T["text"]}; }}
+  .ac-hd   { font-size:0.65rem; text-transform:uppercase; letter-spacing:.1em; color:var(--text-color); opacity:0.35; margin:1.2rem 0 .5rem; }
+  .ac-card { background:var(--secondary-background-color); border:1px solid rgba(128,128,128,0.2); border-radius:8px; padding:14px 18px; margin-bottom:8px; }
+  .ac-card p { margin:0 0 4px; font-size:.79rem; color:var(--text-color); opacity:0.7; line-height:1.65; }
+  .ac-card b { color:var(--text-color); opacity:1; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -492,9 +458,6 @@ with st.sidebar:
     threshold = st.slider("Redundancy  |r| ≥", 0.70, 0.99, 0.85, 0.05)
 
     st.divider()
-    theme = st.radio("Theme", ["Dark", "Light"], horizontal=True, key="app_theme")
-
-    st.divider()
     st.caption("Data: screener.in · Prices: Yahoo Finance")
 
 
@@ -515,26 +478,11 @@ retained_per_group, group_comp_stats, factor_icir_map = compute_composite_stats(
 )
 
 
-# ── Plotly theme helpers ────────────────────────────────────────────────────────
-def _ply(title="", height=300, margin=None, showlegend=False, **kw):
-    base = dict(
-        title=title, height=height, showlegend=showlegend,
-        paper_bgcolor=T["paper_bg"], plot_bgcolor=T["plot_bg"],
-        font=dict(color=T["text_muted"], size=10),
-        margin=margin or dict(l=0, r=0, t=40 if title else 10, b=0),
-    )
-    base.update(kw)
-    return base
-
-def _xax(**kw):
-    base = dict(showgrid=False, color=T["text_muted"])
-    base.update(kw)
-    return base
-
-def _yax(**kw):
-    base = dict(showgrid=True, gridcolor=T["grid"], zeroline=False, color=T["text_muted"])
-    base.update(kw)
-    return base
+# neutral Plotly defaults that work on both dark and light Streamlit themes
+_PLY = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#888888", size=10), margin=dict(l=0, r=0, t=40, b=0))
+_GRID = "rgba(128,128,128,0.2)"
+_LINE = "rgba(128,128,128,0.4)"
 
 
 # ── Header ─────────────────────────────────────────────────────────────────────
@@ -628,9 +576,9 @@ with tab1:
         hoverongaps=False,
         hovertemplate="<b>%{y}</b>  ×  <b>%{x}</b><br>r = %{z:.3f}<extra></extra>",
     ))
-    fig_hm.update_layout(**_ply(height=530, margin=dict(l=0, r=0, t=10, b=0)),
-        xaxis=dict(tickangle=-40, tickfont=dict(size=8.5), showgrid=False, color=T["text_muted"]),
-        yaxis=dict(tickfont=dict(size=8.5), showgrid=False, color=T["text_muted"]),
+    fig_hm.update_layout(**_PLY, height=530, margin=dict(l=0, r=0, t=10, b=0),
+        xaxis=dict(tickangle=-40, tickfont=dict(size=8.5), showgrid=False),
+        yaxis=dict(tickfont=dict(size=8.5), showgrid=False),
     )
     st.plotly_chart(fig_hm, use_container_width=True)
     st.caption(f"** = |r| ≥ {threshold:.2f} (redundant)   * = |r| ≥ 0.60   Method: {method}   n = {n_obs} observations")
@@ -670,7 +618,7 @@ with tab1:
                     f'<div class="insight-box">'
                     f'<p><b>{rep_lbl}</b> &nbsp;is redundant with</p>'
                     f'{dupe_str}'
-                    f'<p style="margin-top:6px;font-size:0.68rem;color:{T["text_dim"]}">'
+                    '<p style="margin-top:6px;font-size:0.68rem;color:rgba(128,128,128,0.6)">'
                     f'r = {", ".join(r_vals)}</p></div>',
                     unsafe_allow_html=True,
                 )
@@ -695,7 +643,7 @@ with tab1:
                 unsafe_allow_html=True,
             )
         st.markdown(
-            "<br><small style='color:" + T["text_dim"] + f"'>{len(retained)} of {len(order)} factors retained</small>",
+            f"<br><small style='color:rgba(128,128,128,0.5)'>{len(retained)} of {len(order)} factors retained</small>",
             unsafe_allow_html=True,
         )
 
@@ -743,10 +691,10 @@ with tab2:
             line=dict(color="#f0b429", width=2.5, dash="dot"),
         )
 
-    fig_line.update_layout(**_ply(height=360, showlegend=True, margin=dict(l=0, r=0, t=20, b=0)),
+    fig_line.update_layout(**_PLY, height=360, showlegend=True, margin=dict(l=0, r=0, t=20, b=0),
         legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=10)),
-        xaxis=_xax(tickformat="d"),
-        yaxis=_yax(),
+        xaxis=dict(showgrid=False, tickformat="d"),
+        yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False),
         hovermode="closest",
     )
     st.plotly_chart(fig_line, use_container_width=True)
@@ -757,8 +705,9 @@ with tab2:
         labels={f_choice: meta["label"]},
         color_discrete_sequence=px.colors.qualitative.Set2,
     )
-    fig_box.update_layout(**_ply(height=280, margin=dict(l=0, r=0, t=10, b=0)),
-        xaxis=_xax(), yaxis=_yax(),
+    fig_box.update_layout(**_PLY, height=280, margin=dict(l=0, r=0, t=10, b=0),
+        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False),
     )
     st.plotly_chart(fig_box, use_container_width=True)
 
@@ -818,14 +767,14 @@ with tab3:
         marker_color=bar_colors,
         hovertemplate="<b>%{x}</b><br>Percentile: %{y:.1f}<extra></extra>",
     ))
-    fig_snap.add_hline(y=50, line_dash="dot", line_color=T["line"],
-                       annotation_text="50th", annotation_font_color=T["line"])
-    fig_snap.update_layout(**_ply(
+    fig_snap.add_hline(y=50, line_dash="dot", line_color=_LINE,
+                       annotation_text="50th", annotation_font_color=_LINE)
+    fig_snap.update_layout(**_PLY,
         title=f"{snap_co}  ·  FY{snap_yr}  ·  Percentile rank vs {sector} peers",
         height=360, margin=dict(l=0, r=0, t=50, b=0),
-    ),
-        xaxis=_xax(tickangle=-35, tickfont=dict(size=8.5)),
-        yaxis=_yax(range=[0, 100], title="Percentile"),
+        xaxis=dict(tickangle=-35, tickfont=dict(size=8.5), showgrid=False),
+        yaxis=dict(range=[0, 100], title="Percentile", showgrid=True, gridcolor=_GRID, zeroline=False),
+        showlegend=False,
     )
     st.plotly_chart(fig_snap, use_container_width=True)
 
@@ -1110,19 +1059,21 @@ with tab4:
     rng_width = max(0.0, min(100.0 - rng_left, (dd_max_ic - dd_min_ic) / 2 * 100))
     rng_mean  = max(0.0, min(100.0, (dd_mean_ic + 1) / 2 * 100))
 
+    _td = "rgba(128,128,128,0.5)"
+    _ln = "rgba(128,128,128,0.4)"
     st.markdown(f'''
 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-bottom:12px;">
   <div>
-    <div style="font-size:0.65rem;color:{T["text_dim"]};text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">
+    <div style="font-size:0.65rem;color:{_td};text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">
       IC-IR (Factor Sharpe) &mdash; {dd_ic_ir:+.3f}
     </div>
     <div class="p2-mid-wrap">
-      <div style="position:absolute;top:0;left:50%;width:1px;height:8px;background:{T["line"]};"></div>
+      <div style="position:absolute;top:0;left:50%;width:1px;height:8px;background:{_ln};"></div>
       <div style="position:absolute;top:0;left:{min(50,icir_pct):.1f}%;width:{abs(icir_pct-50):.1f}%;height:8px;border-radius:3px;background:{icir_col};"></div>
     </div>
   </div>
   <div>
-    <div style="font-size:0.65rem;color:{T["text_dim"]};text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">
+    <div style="font-size:0.65rem;color:{_td};text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">
       Hit Rate &mdash; {dd_hr:.0f}% of years positive
     </div>
     <div class="p2-bar-track">
@@ -1130,11 +1081,11 @@ with tab4:
     </div>
   </div>
   <div>
-    <div style="font-size:0.65rem;color:{T["text_dim"]};text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">
+    <div style="font-size:0.65rem;color:{_td};text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">
       IC Range &mdash; {dd_min_ic:+.3f} to {dd_max_ic:+.3f}
     </div>
     <div class="p2-mid-wrap">
-      <div style="position:absolute;top:0;left:50%;width:1px;height:8px;background:{T["line"]};"></div>
+      <div style="position:absolute;top:0;left:50%;width:1px;height:8px;background:{_ln};"></div>
       <div style="position:absolute;top:2px;height:4px;border-radius:2px;background:#58a6ff;left:{rng_left:.1f}%;width:{rng_width:.1f}%;"></div>
       <div style="position:absolute;top:0;left:{rng_mean:.1f}%;width:2px;height:8px;background:#f0b429;border-radius:1px;"></div>
     </div>
@@ -1154,14 +1105,15 @@ with tab4:
             marker_color=["#3fb950" if v >= 0 else "#f85149" for v in yy_df["IC"]],
             hovertemplate="FY%{x}<br>Rank IC = %{y:.4f}<extra></extra>",
         ))
-        fig_yy.add_hline(y=0,       line_color=T["line"],   line_dash="dot",   line_width=1)
+        fig_yy.add_hline(y=0,       line_color=_LINE,    line_dash="dot",   line_width=1)
         fig_yy.add_hline(y=mean_ic, line_color="#f0b429", line_dash="solid", line_width=2,
                          annotation_text=f"Mean = {mean_ic:+.4f}",
                          annotation_font_color="#f0b429", annotation_position="top right")
-        fig_yy.update_layout(**_ply(
+        fig_yy.update_layout(**_PLY,
             title=f"Year-by-Year Cross-Sectional Rank IC  |  Hit Rate {pct_pos:.0f}%  |  IC-IR {dd_ic_ir:+.3f}",
-            height=290),
-            xaxis=_xax(type="category"), yaxis=_yax(),
+            height=290,
+            xaxis=dict(type="category", showgrid=False),
+            yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False),
         )
         st.plotly_chart(fig_yy, use_container_width=True)
 
@@ -1193,12 +1145,12 @@ with tab4:
                 mode="lines", line=dict(color="#f0b429", width=1.5, dash="dot"),
                 showlegend=False,
             ))
-        fig_sc.add_hline(y=0, line_color=T["line"], line_dash="dot", line_width=1)
-        fig_sc.update_layout(**_ply(
+        fig_sc.add_hline(y=0, line_color=_LINE, line_dash="dot", line_width=1)
+        fig_sc.update_layout(**_PLY,
             title=f"{sel_label}  vs  Next-Year Return  ·  all years pooled (visual reference)",
-            height=390),
-            xaxis=dict(title=sel_label,          showgrid=True, gridcolor=T["grid"], color=T["text_muted"]),
-            yaxis=dict(title="Forward Return %",  showgrid=True, gridcolor=T["grid"], zeroline=False, color=T["text_muted"]),
+            height=390,
+            xaxis=dict(title=sel_label,         showgrid=True, gridcolor=_GRID),
+            yaxis=dict(title="Forward Return %", showgrid=True, gridcolor=_GRID, zeroline=False),
         )
         st.plotly_chart(fig_sc, use_container_width=True)
 
@@ -1333,13 +1285,14 @@ with tab5:
         opacity=0.7,
         hovertemplate="%{x}<br>Best Single IC-IR = %{y:.3f}<extra></extra>",
     ))
-    fig_cmp.add_hline(y=0, line_color=T["line"], line_dash="dot", line_width=1)
-    fig_cmp.update_layout(**_ply(
+    fig_cmp.add_hline(y=0, line_color=_LINE, line_dash="dot", line_width=1)
+    fig_cmp.update_layout(**_PLY,
         title="Composite IC-IR vs Best Single Factor IC-IR — per group",
-        height=320, showlegend=True),
+        height=320, showlegend=True,
         barmode="group",
         legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=9)),
-        xaxis=_xax(tickangle=-30), yaxis=_yax(),
+        xaxis=dict(tickangle=-30, showgrid=False),
+        yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False),
     )
     st.plotly_chart(fig_cmp, use_container_width=True)
 
@@ -1438,14 +1391,15 @@ with tab5:
                 marker_color=["#3fb950" if v >= 0 else "#f85149" for v in yy_sdf["IC"]],
                 hovertemplate="FY%{x}<br>Style IC = %{y:.4f}<extra></extra>",
             ))
-            fig_st.add_hline(y=0,     line_color=T["line"],   line_dash="dot",   line_width=1)
+            fig_st.add_hline(y=0,     line_color=_LINE,    line_dash="dot",   line_width=1)
             fig_st.add_hline(y=s_mic, line_color="#f0b429", line_dash="solid", line_width=2,
                              annotation_text=f"Mean = {s_mic:+.4f}",
                              annotation_font_color="#f0b429", annotation_position="top right")
-            fig_st.update_layout(**_ply(
+            fig_st.update_layout(**_PLY,
                 title=f"Style Composite — {' + '.join(sel_style)}  |  IC-IR {s_icir:+.3f}  |  Hit Rate {s_hr:.0f}%",
-                height=280),
-                xaxis=_xax(type="category"), yaxis=_yax(),
+                height=280,
+                xaxis=dict(type="category", showgrid=False),
+                yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False),
             )
             st.plotly_chart(fig_st, use_container_width=True)
 
@@ -1509,13 +1463,13 @@ with tab5:
                 textposition="outside",
                 hovertemplate="%{y}<br>Style Score = %{x:.3f}<extra></extra>",
             ))
-            fig_lb.add_vline(x=0, line_color=T["line"], line_dash="dot", line_width=1)
-            fig_lb.update_layout(**_ply(
+            fig_lb.add_vline(x=0, line_color=_LINE, line_dash="dot", line_width=1)
+            fig_lb.update_layout(**_PLY,
                 title=f"{sector}  ·  FY{int(sel_lb_yr)}  ·  Style: {' + '.join(sel_style)}",
                 height=max(260, len(lb_df) * 48 + 70),
-                margin=dict(l=0, r=90, t=40, b=0)),
-                yaxis=dict(autorange="reversed", showgrid=False, color=T["text_muted"]),
-                xaxis=_yax(zeroline=False),
+                margin=dict(l=0, r=90, t=40, b=0),
+                yaxis=dict(autorange="reversed", showgrid=False),
+                xaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False),
             )
             st.plotly_chart(fig_lb, use_container_width=True)
 
