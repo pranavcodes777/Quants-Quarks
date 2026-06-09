@@ -277,6 +277,146 @@ def find_redundant_groups(corr: pd.DataFrame, threshold: float) -> dict[str, lis
     return groups
 
 
+@st.cache_data(show_spinner="Computing composites…")
+def compute_composite_stats(sector: str, companies: tuple, yr_lo: int, yr_hi: int,
+                             threshold: float, method: str, _file_hash: str):
+    """
+    Returns (retained_per_group, group_comp_stats, factor_icir_map).
+    All heavy IC + composite work runs once and is cached per filter combination.
+    """
+    df_c = _load_all(_file_hash)
+    df_c = df_c[
+        (df_c["Sector"] == sector) &
+        (df_c["Company"].isin(set(companies))) &
+        (df_c["year"].between(yr_lo, yr_hi))
+    ].copy()
+
+    avail_c  = [f for f in FACTOR_COLS if f in df_c.columns and df_c[f].notna().sum() > 5]
+    df_fwd_c = df_c[df_c["Return_1Y_Fwd"].notna()].copy()
+    if df_fwd_c.empty or not avail_c:
+        return {}, {}, {}
+
+    # 1. Within-group deduplication using the redundancy threshold
+    all_grps_c = list(dict.fromkeys(FACTOR_META[f]["group"] for f in avail_c if f in FACTOR_META))
+    retained_per_group: dict[str, list[str]] = {}
+    for grp in all_grps_c:
+        grp_fs = [f for f in avail_c if FACTOR_META.get(f, {}).get("group") == grp]
+        if len(grp_fs) < 2:
+            retained_per_group[grp] = grp_fs
+            continue
+        try:
+            gc  = compute_corr(df_c[grp_fs].dropna(how="all"), method)
+            go_ = cluster_order(gc)
+            gco = gc.loc[go_, go_]
+            gg  = find_redundant_groups(gco, threshold)
+            gr  = {d for v in gg.values() for d in v}
+            retained_per_group[grp] = [f for f in grp_fs if f not in gr]
+        except Exception:
+            retained_per_group[grp] = grp_fs
+
+    # 2. IC-IR for every retained factor (year-by-year Spearman)
+    all_retained   = [f for fs in retained_per_group.values() for f in fs]
+    factor_icir_map: dict[str, float] = {}
+    factor_mic_map:  dict[str, float] = {}
+    for f in all_retained:
+        if f not in df_fwd_c.columns:
+            continue
+        ic_vals: list[float] = []
+        for yr in sorted(df_fwd_c["year"].unique()):
+            yr_df = df_fwd_c[df_fwd_c["year"] == yr][[f, "Return_1Y_Fwd"]].dropna()
+            if len(yr_df) < 3 or yr_df[f].nunique() < 2:
+                continue
+            try:
+                r, _ = stats.spearmanr(yr_df[f], yr_df["Return_1Y_Fwd"])
+                if not np.isnan(r):
+                    ic_vals.append(float(r))
+            except Exception:
+                pass
+        if len(ic_vals) >= 2:
+            mic = float(np.mean(ic_vals))
+            sic = float(np.std(ic_vals, ddof=1))
+            factor_icir_map[f] = mic / sic if sic > 0 else 0.0
+            factor_mic_map[f]  = mic
+
+    # 3. Build group composite scores + test IC
+    group_comp_stats: dict[str, dict] = {}
+    for grp, grp_fs in retained_per_group.items():
+        usable  = [f for f in grp_fs if f in factor_icir_map]
+        weights = {f: factor_icir_map[f] for f in usable}
+        if not usable or all(abs(w) < 1e-9 for w in weights.values()):
+            continue
+
+        comp_ic_by_year: dict[int, float] = {}
+        scores_by_year:  dict[int, dict]  = {}
+
+        for yr in sorted(df_fwd_c["year"].unique()):
+            yr_data = df_fwd_c[df_fwd_c["year"] == yr].copy()
+            need    = [f for f in usable if f in yr_data.columns] + ["Return_1Y_Fwd", "Company"]
+            yr_sub  = yr_data[need].dropna(subset=["Return_1Y_Fwd"])
+            if len(yr_sub) < 3:
+                continue
+
+            composite = pd.Series(0.0, index=yr_sub.index)
+            n_contrib = 0
+            for f in usable:
+                if f not in yr_sub.columns:
+                    continue
+                col  = yr_sub[f]
+                std_ = col.std()
+                if col.dropna().nunique() < 2 or std_ < 1e-10:
+                    continue
+                z = (col - col.mean()) / std_
+                composite += weights[f] * z.fillna(0.0)
+                n_contrib += 1
+
+            if n_contrib == 0:
+                continue
+            mask = yr_sub["Return_1Y_Fwd"].notna() & composite.notna()
+            cs, rs = composite[mask], yr_sub.loc[mask, "Return_1Y_Fwd"]
+            if len(cs) < 3 or cs.nunique() < 2:
+                continue
+            try:
+                r, _ = stats.spearmanr(cs, rs)
+                if not np.isnan(r):
+                    comp_ic_by_year[yr] = float(r)
+                    scores_by_year[yr]  = dict(zip(yr_sub.loc[mask, "Company"], cs.values))
+            except Exception:
+                pass
+
+        if len(comp_ic_by_year) < 2:
+            continue
+
+        ic_vals  = list(comp_ic_by_year.values())
+        mic      = float(np.mean(ic_vals))
+        sic      = float(np.std(ic_vals, ddof=1))
+        n        = len(ic_vals)
+        ic_ir    = mic / sic if sic > 0 else 0.0
+        hit_rate = sum(1 for v in ic_vals if v > 0) / n * 100
+        t_stat   = mic / (sic / np.sqrt(n)) if sic > 0 else np.nan
+        try:
+            p_val = float(2 * stats.t.sf(abs(t_stat), df=n - 1))
+        except Exception:
+            p_val = float("nan")
+
+        best_single = max((abs(factor_icir_map.get(f, 0.0)) for f in usable), default=0.0)
+
+        group_comp_stats[grp] = {
+            "n_factors":        len(usable),
+            "mean_ic":          round(mic, 4),
+            "ic_ir":            round(ic_ir, 3),
+            "hit_rate":         round(hit_rate, 1),
+            "p_val":            round(p_val, 4) if not np.isnan(p_val) else float("nan"),
+            "n_years":          n,
+            "best_single_icir": round(best_single, 3),
+            "improvement":      round(abs(ic_ir) - best_single, 3),
+            "ic_by_year":       comp_ic_by_year,
+            "scores_by_year":   scores_by_year,
+            "factor_icir":      {f: round(factor_icir_map[f], 3) for f in usable},
+        }
+
+    return retained_per_group, group_comp_stats, factor_icir_map
+
+
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## ◈ Hypothesis V1")
@@ -312,7 +452,15 @@ if df.empty:
     st.warning("No data for the current selection.")
     st.stop()
 
-avail = [f for f in FACTOR_COLS if f in df.columns and df[f].notna().sum() > 5]
+avail  = [f for f in FACTOR_COLS if f in df.columns and df[f].notna().sum() > 5]
+df_fwd = df[df["Return_1Y_Fwd"].notna()].copy()
+
+# Pre-compute composites (cached — runs once per sector/filter/threshold combo)
+retained_per_group, group_comp_stats, factor_icir_map = compute_composite_stats(
+    sector, tuple(sorted(sel_cos)),
+    int(yr_range[0]), int(yr_range[1]),
+    threshold, method, _parquet_hash()
+)
 
 
 # ── Header ─────────────────────────────────────────────────────────────────────
@@ -334,7 +482,7 @@ st.markdown(f"""
 
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs(["  Correlation Matrix  ", "  Factor Explorer  ", "  Company Snapshot  ", "  Factor Predictability  "])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["  Correlation Matrix  ", "  Factor Explorer  ", "  Company Snapshot  ", "  Factor Predictability  ", "  Alpha Composite  "])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1044,3 +1192,315 @@ with tab4:
         "Each bar = one independent year's rank correlation across companies in this sector. "
         "Scatter is all years pooled — visual reference only; statistics come from the bar chart above."
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 5 — Alpha Composite Score
+# ══════════════════════════════════════════════════════════════════════════════
+with tab5:
+
+    st.markdown("""<style>
+    .ac-hd{font-size:0.65rem;text-transform:uppercase;letter-spacing:.1em;color:#484f58;margin:1.2rem 0 .5rem;}
+    .ac-card{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:14px 18px;margin-bottom:8px;}
+    .ac-card p{margin:0 0 4px;font-size:.79rem;color:#8b949e;line-height:1.65;}
+    .ac-card b{color:#e6edf3;}
+    </style>""", unsafe_allow_html=True)
+
+    if not group_comp_stats:
+        st.warning("Not enough data to compute group composites. Try expanding the year range or selecting more companies.")
+        st.stop()
+
+    # ── KPI strip ─────────────────────────────────────────────────────────────
+    n_grps    = len(group_comp_stats)
+    n_imp     = sum(1 for g in group_comp_stats.values() if g["improvement"] > 0)
+    best_g    = max(group_comp_stats.items(), key=lambda x: abs(x[1]["ic_ir"]))
+    best_name, best_stat = best_g
+
+    kc1, kc2, kc3, kc4, kc5 = st.columns(5)
+    kc1.metric("Groups tested",          n_grps)
+    kc2.metric("Composite > best single", f"{n_imp} / {n_grps}")
+    kc3.metric("Best group",             best_name)
+    kc4.metric("Best IC-IR",             f"{best_stat['ic_ir']:+.3f}")
+    kc5.metric("Best hit rate",          f"{best_stat['hit_rate']:.0f}%")
+
+    st.divider()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECTION 1 — Group Composite IC Table
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown('<div class="ac-hd">Section 1 — Group Composite IC (each group combined into one score)</div>',
+                unsafe_allow_html=True)
+
+    tbl_rows = []
+    for grp, gs in sorted(group_comp_stats.items(), key=lambda x: abs(x[1]["ic_ir"]), reverse=True):
+        tbl_rows.append({
+            "Group":              grp,
+            "Indep. Factors":     gs["n_factors"],
+            "Composite IC-IR":    gs["ic_ir"],
+            "Best Single IC-IR":  gs["best_single_icir"],
+            "Δ vs Single":        gs["improvement"],
+            "Hit Rate %":         gs["hit_rate"],
+            "Mean IC":            gs["mean_ic"],
+            "p-value":            gs["p_val"],
+            "N Years":            gs["n_years"],
+        })
+
+    tdf = pd.DataFrame(tbl_rows).set_index("Group")
+
+    def _sc_icir(v):
+        if not isinstance(v, (int, float)): return ""
+        if abs(v) > 1.5: return "color:#3fb950;font-weight:700"
+        if abs(v) > 0.75: return "color:#56d364"
+        return "color:#8b949e"
+
+    def _sc_delta(v):
+        if not isinstance(v, (int, float)): return ""
+        if v > 0.1:  return "color:#3fb950;font-weight:700"
+        if v > 0:    return "color:#56d364"
+        if v < -0.1: return "color:#f85149"
+        return "color:#8b949e"
+
+    def _sc_mic(v):
+        if not isinstance(v, (int, float)): return ""
+        if v >  0.10: return "color:#3fb950;font-weight:700"
+        if v >  0.05: return "color:#56d364"
+        if v < -0.05: return "color:#f85149"
+        return "color:#8b949e"
+
+    def _sc_pv(v):
+        if not isinstance(v, (int, float)): return ""
+        if v < 0.05: return "color:#3fb950"
+        if v < 0.10: return "color:#f0b429"
+        return "color:#8b949e"
+
+    styled_tdf = (tdf.style
+                  .map(_sc_icir,  subset=["Composite IC-IR", "Best Single IC-IR"])
+                  .map(_sc_delta, subset=["Δ vs Single"])
+                  .map(_sc_mic,   subset=["Mean IC"])
+                  .map(_sc_pv,    subset=["p-value"]))
+    st.dataframe(styled_tdf, use_container_width=True)
+
+    # ── Composite vs best-single bar chart ────────────────────────────────────
+    grps_sorted = [r["Group"] for r in tbl_rows]
+    grp_colors  = [GROUP_COLORS.get(g, "#8b949e") for g in grps_sorted]
+
+    fig_cmp = go.Figure()
+    fig_cmp.add_trace(go.Bar(
+        name="Composite IC-IR",
+        x=grps_sorted,
+        y=[group_comp_stats[g]["ic_ir"] for g in grps_sorted],
+        marker_color=grp_colors,
+        opacity=0.9,
+        hovertemplate="%{x}<br>Composite IC-IR = %{y:.3f}<extra></extra>",
+    ))
+    fig_cmp.add_trace(go.Bar(
+        name="Best Single Factor IC-IR",
+        x=grps_sorted,
+        y=[group_comp_stats[g]["best_single_icir"] * (1 if group_comp_stats[g]["ic_ir"] >= 0 else -1)
+           for g in grps_sorted],
+        marker_color="#484f58",
+        opacity=0.7,
+        hovertemplate="%{x}<br>Best Single IC-IR = %{y:.3f}<extra></extra>",
+    ))
+    fig_cmp.add_hline(y=0, line_color="#484f58", line_dash="dot", line_width=1)
+    fig_cmp.update_layout(
+        barmode="group",
+        title="Composite IC-IR vs Best Single Factor IC-IR — per group",
+        height=320,
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#8b949e", size=10),
+        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=9)),
+        xaxis=dict(showgrid=False, tickangle=-30),
+        yaxis=dict(showgrid=True, gridcolor="#21262d", zeroline=False),
+        margin=dict(l=0, r=0, t=40, b=0),
+    )
+    st.plotly_chart(fig_cmp, use_container_width=True)
+
+    st.divider()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECTION 2 — Style Builder
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown('<div class="ac-hd">Section 2 — Style Composite Builder (combine groups into one style score)</div>',
+                unsafe_allow_html=True)
+
+    avail_grps = list(group_comp_stats.keys())
+    default_quality = [g for g in ["Earnings Quality", "CF Quality", "Capital Allocation"] if g in avail_grps]
+    if not default_quality:
+        default_quality = avail_grps[:3]
+
+    sel_style = st.multiselect(
+        "Select groups to combine",
+        avail_grps, default=default_quality, key="t5_style",
+        help="Each group's composite score is weighted by its IC-IR and summed into one Style Score per company."
+    )
+
+    if len(sel_style) < 2:
+        st.info("Select at least 2 groups to build a style composite.")
+    else:
+        # Combine group scores year-by-year (weighted by each group's IC-IR magnitude)
+        style_ic_by_yr:     dict[int, float] = {}
+        style_scores_by_yr: dict[int, dict]  = {}
+
+        all_yrs = sorted(set(yr for g in sel_style for yr in group_comp_stats[g]["scores_by_year"]))
+        for yr in all_yrs:
+            yr_companies: dict[str, float] = {}
+            total_weight = 0.0
+            for grp in sel_style:
+                if yr not in group_comp_stats[grp]["scores_by_year"]:
+                    continue
+                w    = abs(group_comp_stats[grp]["ic_ir"])
+                sign = 1.0 if group_comp_stats[grp]["mean_ic"] >= 0 else -1.0
+                for co, sc in group_comp_stats[grp]["scores_by_year"][yr].items():
+                    yr_companies[co] = yr_companies.get(co, 0.0) + sign * w * sc
+                total_weight += w
+
+            if total_weight < 1e-9 or len(yr_companies) < 3:
+                continue
+
+            # Normalize by total weight
+            yr_companies = {co: v / total_weight for co, v in yr_companies.items()}
+
+            # Get returns for this year
+            yr_ret = df_fwd[df_fwd["year"] == yr][["Company", "Return_1Y_Fwd"]].dropna()
+            aligned = yr_ret[yr_ret["Company"].isin(yr_companies)].copy()
+            aligned["style_score"] = aligned["Company"].map(yr_companies)
+            aligned = aligned.dropna()
+            if len(aligned) < 3 or aligned["style_score"].nunique() < 2:
+                continue
+
+            try:
+                r, _ = stats.spearmanr(aligned["style_score"], aligned["Return_1Y_Fwd"])
+                if not np.isnan(r):
+                    style_ic_by_yr[yr]     = float(r)
+                    style_scores_by_yr[yr] = dict(zip(aligned["Company"], aligned["style_score"]))
+            except Exception:
+                pass
+
+        if len(style_ic_by_yr) < 2:
+            st.info("Not enough overlapping years with data for all selected groups.")
+        else:
+            sic_vals  = list(style_ic_by_yr.values())
+            s_mic     = float(np.mean(sic_vals))
+            s_sic     = float(np.std(sic_vals, ddof=1))
+            s_n       = len(sic_vals)
+            s_icir    = s_mic / s_sic if s_sic > 0 else 0.0
+            s_hr      = sum(1 for v in sic_vals if v > 0) / s_n * 100
+            s_tstat   = s_mic / (s_sic / np.sqrt(s_n)) if s_sic > 0 else np.nan
+            try:
+                s_pval = float(2 * stats.t.sf(abs(s_tstat), df=s_n - 1))
+            except Exception:
+                s_pval = float("nan")
+
+            # Style KPI strip
+            sk1, sk2, sk3, sk4, sk5 = st.columns(5)
+            sk1.metric("Style Mean IC",  f"{s_mic:+.4f}")
+            sk2.metric("Style IC-IR",    f"{s_icir:+.3f}",
+                       delta="strong" if abs(s_icir) > 1.5 else ("moderate" if abs(s_icir) > 0.75 else "weak"),
+                       delta_color="normal")
+            sk3.metric("Hit Rate",       f"{s_hr:.0f}%")
+            sk4.metric("p-value",        f"{s_pval:.4f}" if not np.isnan(s_pval) else "—")
+            sk5.metric("N Years",        s_n)
+
+            # Year-by-year style IC chart
+            yy_sdf = pd.DataFrame([{"Year": str(int(y)), "IC": round(v, 4)}
+                                    for y, v in sorted(style_ic_by_yr.items())])
+            fig_st = go.Figure()
+            fig_st.add_trace(go.Bar(
+                x=yy_sdf["Year"], y=yy_sdf["IC"],
+                marker_color=["#3fb950" if v >= 0 else "#f85149" for v in yy_sdf["IC"]],
+                hovertemplate="FY%{x}<br>Style IC = %{y:.4f}<extra></extra>",
+            ))
+            fig_st.add_hline(y=0,     line_color="#484f58", line_dash="dot",   line_width=1)
+            fig_st.add_hline(y=s_mic, line_color="#f0b429", line_dash="solid", line_width=2,
+                             annotation_text=f"Mean = {s_mic:+.4f}",
+                             annotation_font_color="#f0b429", annotation_position="top right")
+            fig_st.update_layout(
+                title=f"Style Composite — {' + '.join(sel_style)}  |  IC-IR {s_icir:+.3f}  |  Hit Rate {s_hr:.0f}%",
+                height=280,
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#8b949e", size=10), showlegend=False,
+                xaxis=dict(type="category", showgrid=False),
+                yaxis=dict(showgrid=True, gridcolor="#21262d", zeroline=False),
+                margin=dict(l=0, r=0, t=40, b=0),
+            )
+            st.plotly_chart(fig_st, use_container_width=True)
+
+            # Interpretation
+            s_dir = "positive" if s_mic > 0 else "negative"
+            s_str = "strong" if abs(s_icir) > 1.5 else ("moderate" if abs(s_icir) > 0.75 else "weak")
+            st.markdown(f'''<div class="ac-card">
+              <p>The <b>{" + ".join(sel_style)}</b> style composite has a <b>{s_str}</b> {s_dir} signal
+                 (IC-IR {s_icir:+.3f}) with a hit rate of <b>{s_hr:.0f}%</b> across {s_n} years in <b>{sector}</b>.</p>
+              <p><b>How it works:</b> each company is scored on each group's composite, groups are weighted by their IC-IR,
+                 then summed into one style score. The ranking of companies by this score is then tested against
+                 next-year returns using Spearman rank correlation — each bar above is one independent year.</p>
+            </div>''', unsafe_allow_html=True)
+
+            st.divider()
+
+            # ══════════════════════════════════════════════════════════════════
+            # SECTION 3 — Company Leaderboard
+            # ══════════════════════════════════════════════════════════════════
+            st.markdown('<div class="ac-hd">Section 3 — Company Leaderboard (who scores highest right now?)</div>',
+                        unsafe_allow_html=True)
+
+            avail_lb_yrs = sorted(style_scores_by_yr.keys(), reverse=True)
+            sel_lb_yr    = st.selectbox("Leaderboard year", avail_lb_yrs,
+                                        format_func=lambda y: f"FY {int(y)}", key="t5_lb_yr")
+
+            yr_sc = style_scores_by_yr[sel_lb_yr]
+            lb_rows = []
+            for rank, (co, sc) in enumerate(
+                sorted(yr_sc.items(), key=lambda x: x[1], reverse=True), start=1
+            ):
+                row = {"Rank": rank, "Company": co, "Style Score": round(sc, 3)}
+                for grp in sel_style:
+                    gsc = group_comp_stats[grp]["scores_by_year"].get(sel_lb_yr, {}).get(co, np.nan)
+                    row[grp] = round(gsc, 3) if not np.isnan(gsc) else np.nan
+                lb_rows.append(row)
+
+            lb_df = pd.DataFrame(lb_rows).set_index("Rank")
+
+            # Style leaderboard table
+            def _sc_style(v):
+                if not isinstance(v, (int, float)) or np.isnan(v): return ""
+                if v > 0.5:  return "color:#3fb950;font-weight:700"
+                if v > 0:    return "color:#56d364"
+                if v < -0.5: return "color:#f85149;font-weight:700"
+                return "color:#ff7b72"
+
+            lb_styled = lb_df.style.map(_sc_style, subset=["Style Score"] + sel_style)
+            st.dataframe(lb_styled, use_container_width=True)
+
+            # Horizontal bar chart
+            lb_sorted = lb_df.sort_values("Style Score")
+            bar_colors = ["#3fb950" if v > 0 else "#f85149" for v in lb_sorted["Style Score"]]
+            fig_lb = go.Figure()
+            fig_lb.add_trace(go.Bar(
+                y=lb_sorted["Company"],
+                x=lb_sorted["Style Score"],
+                orientation="h",
+                marker_color=bar_colors,
+                text=[f"{v:+.3f}" for v in lb_sorted["Style Score"]],
+                textposition="outside",
+                hovertemplate="%{y}<br>Style Score = %{x:.3f}<extra></extra>",
+            ))
+            fig_lb.add_vline(x=0, line_color="#484f58", line_dash="dot", line_width=1)
+            fig_lb.update_layout(
+                title=f"{sector}  ·  FY{int(sel_lb_yr)}  ·  Style: {' + '.join(sel_style)}",
+                height=max(260, len(lb_df) * 48 + 70),
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#8b949e", size=11), showlegend=False,
+                yaxis=dict(autorange="reversed", showgrid=False),
+                xaxis=dict(showgrid=True, gridcolor="#21262d", zeroline=False),
+                margin=dict(l=0, r=90, t=40, b=0),
+            )
+            st.plotly_chart(fig_lb, use_container_width=True)
+
+            st.caption(
+                f"Score = IC-IR-weighted sum of group composites. "
+                f"Groups used: {', '.join(sel_style)}. "
+                f"Redundancy threshold: |r| ≥ {threshold:.2f} — "
+                f"only independent signals (after within-group deduplication) contribute."
+            )
