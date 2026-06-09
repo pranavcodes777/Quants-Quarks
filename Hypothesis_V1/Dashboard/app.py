@@ -20,6 +20,20 @@ from factor_builder import SECTORS
 
 _DB_PATH = os.path.join(os.path.dirname(__file__), "..", "Database", "bs_factors.parquet")
 
+# ── Theme palettes (defined early — CSS block uses T before FACTOR_META loads) ─
+_DARK = {
+    "bg": "#0d1117", "surface": "#161b22", "surface2": "#21262d",
+    "border": "#21262d", "text": "#e6edf3", "text_muted": "#8b949e",
+    "text_dim": "#484f58", "paper_bg": "rgba(0,0,0,0)", "plot_bg": "rgba(0,0,0,0)",
+    "grid": "#21262d", "line": "#484f58", "sidebar_bg": "#0d1117",
+}
+_LIGHT = {
+    "bg": "#ffffff", "surface": "#f6f8fa", "surface2": "#eaeef2",
+    "border": "#d0d7de", "text": "#1f2328", "text_muted": "#57606a",
+    "text_dim": "#9198a1", "paper_bg": "rgba(0,0,0,0)", "plot_bg": "rgba(0,0,0,0)",
+    "grid": "#eaeef2", "line": "#9198a1", "sidebar_bg": "#f6f8fa",
+}
+
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Hypothesis V1 · Factor Research",
@@ -230,19 +244,6 @@ FACTOR_META: dict[str, dict] = {
 
 FACTOR_COLS  = list(FACTOR_META.keys())
 
-# ── Theme palette ───────────────────────────────────────────────────────────────
-_DARK = {
-    "bg": "#0d1117", "surface": "#161b22", "surface2": "#21262d",
-    "border": "#21262d", "text": "#e6edf3", "text_muted": "#8b949e",
-    "text_dim": "#484f58", "paper_bg": "rgba(0,0,0,0)", "plot_bg": "rgba(0,0,0,0)",
-    "grid": "#21262d", "line": "#484f58", "sidebar_bg": "#0d1117",
-}
-_LIGHT = {
-    "bg": "#ffffff", "surface": "#f6f8fa", "surface2": "#eaeef2",
-    "border": "#d0d7de", "text": "#1f2328", "text_muted": "#57606a",
-    "text_dim": "#9198a1", "paper_bg": "rgba(0,0,0,0)", "plot_bg": "rgba(0,0,0,0)",
-    "grid": "#eaeef2", "line": "#9198a1", "sidebar_bg": "#f6f8fa",
-}
 GROUP_COLORS = {
     "Leverage":          "#f85149",
     "Asset Mix":         "#58a6ff",
