@@ -1244,16 +1244,19 @@ with tab4:
                 text=f"{sel_label}  vs  Next-Year Return  -  all years pooled  (each colour = one year)",
                 font=dict(size=12),
             ),
-            height=480,
-            xaxis=dict(title=sel_label,         showgrid=True, gridcolor=_GRID),
+            height=500,
+            xaxis=dict(title=sel_label, showgrid=True, gridcolor=_GRID, title_font=dict(size=11)),
             yaxis=dict(title="Forward Return %", showgrid=True, gridcolor=_GRID, zeroline=False),
             legend=dict(
-                orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
+                orientation="v", yanchor="middle", y=0.5, xanchor="left", x=1.01,
                 font=dict(size=9), itemsizing="constant",
+                bgcolor="rgba(0,0,0,0)", borderwidth=0,
             ),
-            margin=dict(l=10, r=10, t=60, b=10),
+            margin=dict(l=10, r=110, t=50, b=10),
         )
         st.plotly_chart(fig_sc, use_container_width=True)
+
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
     # ── Interpretation box — verdict-first, scannable ─────────────────────────
     direction   = "positively" if dd_mean_ic > 0 else "negatively"
@@ -1436,16 +1439,29 @@ with tab5:
         )
 
     fig_cmp = go.Figure()
+    # Threshold reference bands
+    fig_cmp.add_hrect(y0=0.75, y1=1.5,  fillcolor="rgba(63,185,80,0.04)",  line_width=0)
+    fig_cmp.add_hrect(y0=1.5,  y1=3.5,  fillcolor="rgba(63,185,80,0.08)",  line_width=0)
+    fig_cmp.add_hline(y=0.75, line_color="rgba(63,185,80,0.3)",  line_dash="dot", line_width=1,
+                      annotation_text="IC-IR 0.75", annotation_font=dict(color="rgba(63,185,80,0.5)", size=8),
+                      annotation_position="top right")
+    fig_cmp.add_hline(y=1.50, line_color="rgba(63,185,80,0.5)",  line_dash="dot", line_width=1,
+                      annotation_text="IC-IR 1.50 (strong)", annotation_font=dict(color="rgba(63,185,80,0.6)", size=8),
+                      annotation_position="top right")
     fig_cmp.add_trace(go.Bar(
         name="Composite IC-IR",
         x=grps_sorted,
         y=[group_comp_stats[g]["ic_ir"] for g in grps_sorted],
         marker_color=grp_colors,
         opacity=0.9,
+        text=[f"{group_comp_stats[g]['ic_ir']:+.3f}" for g in grps_sorted],
+        textposition="outside",
+        textfont=dict(size=9, color="#cccccc"),
         hovertemplate=cmp_hover,
+        cliponaxis=False,
     ))
     fig_cmp.add_trace(go.Bar(
-        name="Best Single Factor IC-IR",
+        name="Best Single Factor",
         x=grps_sorted,
         y=[group_comp_stats[g]["best_single_icir"] * (1 if group_comp_stats[g]["ic_ir"] >= 0 else -1)
            for g in grps_sorted],
@@ -1455,20 +1471,25 @@ with tab5:
         textposition="outside",
         textfont=dict(size=8, color="#8b949e"),
         hovertemplate=single_hover,
+        cliponaxis=False,
     ))
     fig_cmp.add_hline(y=0, line_color=_LINE, line_dash="dot", line_width=1)
+    _cmp_max = max((abs(group_comp_stats[g]["ic_ir"]) for g in grps_sorted), default=1.0)
     fig_cmp.update_layout(**_PLY,
-        title="Composite IC-IR vs Best Single Factor — hover a bar to see factor names & top-3 breakdown",
-        height=400, showlegend=True,
+        title=dict(text="Composite IC-IR vs Best Single Factor — hover for factor names & top-3 breakdown", font=dict(size=13)),
+        height=480, showlegend=True,
         barmode="group",
-        margin=dict(l=0, r=0, t=45, b=80),
-        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=9)),
-        xaxis=dict(tickangle=-30, showgrid=False, tickfont=dict(size=9.5)),
-        yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False, tickformat=".3f"),
+        margin=dict(l=0, r=10, t=50, b=90),
+        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=10), orientation="h", x=0.02, y=1.06),
+        xaxis=dict(tickangle=-32, showgrid=False, tickfont=dict(size=10)),
+        yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False, tickformat=".2f",
+                   range=[-0.1, _cmp_max * 1.30]),
         hoverlabel=dict(bgcolor="#1c2128", font_size=11, font_family="monospace"),
+        bargap=0.25,
     )
     st.plotly_chart(fig_cmp, use_container_width=True)
 
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     st.divider()
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -1476,6 +1497,7 @@ with tab5:
     # ══════════════════════════════════════════════════════════════════════════
     st.markdown('<div class="ac-hd">Section 2 — Style Composite Builder (combine groups into one style score)</div>',
                 unsafe_allow_html=True)
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
     avail_grps = list(group_comp_stats.keys())
     default_quality = [g for g in ["Earnings Quality", "CF Quality", "Capital Allocation"] if g in avail_grps]
@@ -1621,8 +1643,10 @@ with tab5:
             # ══════════════════════════════════════════════════════════════════
             # SECTION 3 — Company Leaderboard
             # ══════════════════════════════════════════════════════════════════
+            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
             st.markdown('<div class="ac-hd">Section 3 — Company Leaderboard (who scores highest right now?)</div>',
                         unsafe_allow_html=True)
+            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
             avail_lb_yrs = sorted(style_scores_by_yr.keys(), reverse=True)
             sel_lb_yr    = st.selectbox("Leaderboard year", avail_lb_yrs,
@@ -1652,32 +1676,65 @@ with tab5:
             lb_styled = lb_df.style.map(_sc_style, subset=["Style Score"] + sel_style)
             st.dataframe(lb_styled, use_container_width=True)
 
-            # Horizontal bar chart
+            # Horizontal bar chart — color intensity by score magnitude
             lb_sorted = lb_df.sort_values("Style Score")
-            bar_colors = ["#3fb950" if v > 0 else "#f85149" for v in lb_sorted["Style Score"]]
+            _sc_max = max(lb_sorted["Style Score"].abs().max(), 0.01)
+
+            def _lb_color(v):
+                t = min(abs(v) / _sc_max, 1.0)
+                if v > 0:
+                    g = int(100 + 85 * t)
+                    return f"rgb(30,{g},50)"
+                else:
+                    r = int(120 + 88 * t)
+                    return f"rgb({r},40,40)"
+
+            lb_bar_colors = [_lb_color(v) for v in lb_sorted["Style Score"]]
+
+            # Build richer hover: style score + each group score
+            lb_hover = []
+            for co in lb_sorted["Company"]:
+                sc_val = yr_sc.get(co, 0)
+                lines  = [f"<b>{co}</b>", f"Style Score: <b>{sc_val:+.3f}</b>", ""]
+                for grp in sel_style:
+                    gval = group_comp_stats[grp]["scores_by_year"].get(sel_lb_yr, {}).get(co, float("nan"))
+                    if not np.isnan(gval):
+                        bar  = "+" * min(int(abs(gval) * 4), 5) if gval > 0 else "-" * min(int(abs(gval) * 4), 5)
+                        lines.append(f"{grp}: {gval:+.3f}  {bar}")
+                lb_hover.append("<br>".join(lines) + "<extra></extra>")
+
             fig_lb = go.Figure()
             fig_lb.add_trace(go.Bar(
                 y=lb_sorted["Company"],
                 x=lb_sorted["Style Score"],
                 orientation="h",
-                marker_color=bar_colors,
+                marker_color=lb_bar_colors,
+                marker_line_color="rgba(255,255,255,0.08)",
+                marker_line_width=1,
                 text=[f"{v:+.3f}" for v in lb_sorted["Style Score"]],
                 textposition="outside",
-                hovertemplate="%{y}<br>Style Score = %{x:.3f}<extra></extra>",
+                textfont=dict(size=9, color="#aaaaaa"),
+                hovertemplate=lb_hover,
+                cliponaxis=False,
             ))
             fig_lb.add_vline(x=0, line_color=_LINE, line_dash="dot", line_width=1)
             fig_lb.update_layout(**_PLY,
-                title=f"{sector}  ·  FY{int(sel_lb_yr)}  ·  Style: {' + '.join(sel_style)}",
-                height=max(260, len(lb_df) * 48 + 70),
-                margin=dict(l=0, r=90, t=40, b=0),
-                yaxis=dict(autorange="reversed", showgrid=False),
+                title=dict(
+                    text=f"{sector}  -  FY{int(sel_lb_yr)}  -  Style: {' + '.join(sel_style)}",
+                    font=dict(size=12),
+                ),
+                height=max(300, len(lb_df) * 34 + 80),
+                margin=dict(l=0, r=80, t=45, b=10),
+                yaxis=dict(autorange="reversed", showgrid=False, tickfont=dict(size=10)),
                 xaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False),
+                hoverlabel=dict(bgcolor="#1c2128", font_size=11, font_family="monospace"),
             )
             st.plotly_chart(fig_lb, use_container_width=True)
 
             st.caption(
                 f"Score = IC-IR-weighted sum of group composites. "
                 f"Groups used: {', '.join(sel_style)}. "
-                f"Redundancy threshold: |r| ≥ {threshold:.2f} — "
-                f"only independent signals (after within-group deduplication) contribute."
+                f"Redundancy threshold: |r| >= {threshold:.2f} — "
+                f"only independent signals (after within-group deduplication) contribute. "
+                f"Hover a bar to see each group's contribution."
             )
