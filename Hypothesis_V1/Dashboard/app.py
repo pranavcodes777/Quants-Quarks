@@ -253,18 +253,20 @@ def load_data(sector: str) -> pd.DataFrame:
 
 
 # ── Correlation helpers ────────────────────────────────────────────────────────
-def compute_corr(df: pd.DataFrame, method: str) -> pd.DataFrame:
-    return df.corr(method=method.lower())
+@st.cache_data(show_spinner=False)
+def compute_corr(_df_hash: str, cols: tuple, method: str, _df: pd.DataFrame) -> pd.DataFrame:
+    return _df[list(cols)].corr(method=method.lower())
 
 
-def corr_pvalues(df: pd.DataFrame) -> pd.DataFrame:
-    cols = df.columns.tolist()
-    pmat = pd.DataFrame(1.0, index=cols, columns=cols)
-    for i, c1 in enumerate(cols):
-        for j, c2 in enumerate(cols):
+@st.cache_data(show_spinner=False)
+def corr_pvalues(_df_hash: str, cols: tuple, _df: pd.DataFrame) -> pd.DataFrame:
+    col_list = list(cols)
+    pmat = pd.DataFrame(1.0, index=col_list, columns=col_list)
+    for i, c1 in enumerate(col_list):
+        for j, c2 in enumerate(col_list):
             if i >= j:
                 continue
-            sub = df[[c1, c2]].dropna()
+            sub = _df[[c1, c2]].dropna()
             if len(sub) > 3:
                 _, p = stats.pearsonr(sub[c1], sub[c2])
                 pmat.loc[c1, c2] = p
@@ -272,15 +274,16 @@ def corr_pvalues(df: pd.DataFrame) -> pd.DataFrame:
     return pmat
 
 
-def cluster_order(corr: pd.DataFrame) -> list[str]:
-    dist = (1 - corr.abs()).clip(0, 1).to_numpy(copy=True)
+@st.cache_data(show_spinner=False)
+def cluster_order(_corr_hash: str, _corr: pd.DataFrame) -> list[str]:
+    dist = (1 - _corr.abs()).clip(0, 1).to_numpy(copy=True)
     np.fill_diagonal(dist, 0)
     try:
         Z     = linkage(squareform(dist), method="average")
         order = leaves_list(Z)
-        return corr.index[order].tolist()
+        return _corr.index[order].tolist()
     except Exception:
-        return corr.index.tolist()
+        return _corr.index.tolist()
 
 
 def find_redundant_groups(corr: pd.DataFrame, threshold: float) -> dict[str, list[str]]:
@@ -523,76 +526,83 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["  Correlation Matrix  ", "  Factor Expl
 # ══════════════════════════════════════════════════════════════════════════════
 with tab1:
     all_groups = list(dict.fromkeys(FACTOR_META[f]["group"] for f in avail if f in FACTOR_META))
-    st.markdown('<div class="section-hd">Heatmap — Factor Groups</div>', unsafe_allow_html=True)
-    sel_groups_hm = st.multiselect(
-        "hm_label", all_groups, default=all_groups, key="hm_groups",
-        label_visibility="collapsed"
-    )
-    hm_col1, hm_col2 = st.columns([5, 1])
-    with hm_col1:
-        hm_factors = [f for f in avail if FACTOR_META.get(f, {}).get("group") in sel_groups_hm]
-    with hm_col2:
+
+    # ── Heatmap toggle + controls ─────────────────────────────────────────────
+    hm_ctrl1, hm_ctrl2, hm_ctrl3 = st.columns([1, 5, 1])
+    with hm_ctrl1:
+        show_heatmap = st.toggle("Show Heatmap", value=False, key="hm_show",
+                                  help="The heatmap is heavy — toggle on only when you need it. Everything else on this tab works without it.")
+    with hm_ctrl2:
+        sel_groups_hm = st.multiselect(
+            "hm_label", all_groups, default=all_groups, key="hm_groups",
+            label_visibility="collapsed", disabled=not show_heatmap,
+        )
+    with hm_ctrl3:
         inc_ret = st.checkbox(
-            "Include Return",
-            value=False,
-            key="hm_inc_ret",
-            help="Append 1-year forward stock return to the heatmap so you can see which factors correlate with actual price performance."
+            "Include Return", value=False, key="hm_inc_ret", disabled=not show_heatmap,
+            help="Append 1-year forward return to the heatmap."
         )
 
-    if inc_ret and "Return_1Y_Fwd" in df.columns and df["Return_1Y_Fwd"].notna().sum() > 5:
-        hm_factors = hm_factors + ["Return_1Y_Fwd"]
+    if show_heatmap:
+        hm_factors = [f for f in avail if FACTOR_META.get(f, {}).get("group") in sel_groups_hm]
+        if inc_ret and "Return_1Y_Fwd" in df.columns and df["Return_1Y_Fwd"].notna().sum() > 5:
+            hm_factors = hm_factors + ["Return_1Y_Fwd"]
 
-    if len(hm_factors) < 2:
-        st.info("Select at least 2 factor groups.")
-        st.stop()
+        if len(hm_factors) < 2:
+            st.info("Select at least 2 factor groups.")
+        else:
+            def _label(f):
+                if f == "Return_1Y_Fwd": return "Fwd Return 1Y"
+                return FACTOR_META[f]["label"]
 
-    # Label lookup that handles Return_1Y_Fwd (not in FACTOR_META)
-    def _label(f):
-        if f == "Return_1Y_Fwd":
-            return "Fwd Return 1Y"
-        return FACTOR_META[f]["label"]
+            _hm_key  = f"{_parquet_hash()}_{tuple(hm_factors)}_{method}"
+            corr     = compute_corr(_hm_key, tuple(hm_factors), method, df)
+            pval     = corr_pvalues(_hm_key, tuple(hm_factors), df)
+            order    = cluster_order(str(corr.values.tobytes()), corr)
+            corr_o   = corr.loc[order, order]
 
-    corr   = compute_corr(df[hm_factors], method)
-    pval   = corr_pvalues(df[hm_factors])
-    order  = cluster_order(corr)
-    corr_o = corr.loc[order, order]
-    pval_o = pval.loc[order, order]
+            z    = corr_o.values
+            mask = np.triu(np.ones_like(z, dtype=bool), k=1)
+            z_lo = np.where(mask, np.nan, z)
+            labels = [_label(f) for f in order]
+            annot  = []
+            for i in range(len(order)):
+                row = []
+                for j in range(len(order)):
+                    if mask[i, j]:   row.append("")
+                    elif i == j:     row.append("1.00")
+                    else:
+                        v = z[i, j]
+                        sig = "**" if abs(v) >= threshold else ("*" if abs(v) >= 0.6 else "")
+                        row.append(f"{v:.2f}{sig}")
+                annot.append(row)
 
-    z    = corr_o.values
-    mask = np.triu(np.ones_like(z, dtype=bool), k=1)
-    z_lo = np.where(mask, np.nan, z)
-
-    labels = [_label(f) for f in order]
-    annot  = []
-    for i in range(len(order)):
-        row = []
-        for j in range(len(order)):
-            if mask[i, j]:
-                row.append("")
-            elif i == j:
-                row.append("1.00")
-            else:
-                v   = z[i, j]
-                sig = "**" if abs(v) >= threshold else ("*" if abs(v) >= 0.6 else "")
-                row.append(f"{v:.2f}{sig}")
-        annot.append(row)
-
-    fig_hm = go.Figure(go.Heatmap(
-        z=z_lo, x=labels, y=labels,
-        text=annot, texttemplate="%{text}",
-        textfont={"size": 8},
-        colorscale="RdBu_r", zmid=0, zmin=-1, zmax=1,
-        showscale=True,
-        colorbar=dict(title=dict(text="r", font=dict(size=11)), tickfont=dict(size=10), len=0.55),
-        hoverongaps=False,
-        hovertemplate="<b>%{y}</b>  ×  <b>%{x}</b><br>r = %{z:.3f}<extra></extra>",
-    ))
-    fig_hm.update_layout(**_PLY, height=530, margin=dict(l=0, r=0, t=10, b=0),
-        xaxis=dict(tickangle=-40, tickfont=dict(size=8.5), showgrid=False),
-        yaxis=dict(tickfont=dict(size=8.5), showgrid=False),
-    )
-    st.plotly_chart(fig_hm, use_container_width=True)
-    st.caption(f"** = |r| ≥ {threshold:.2f} (redundant)   * = |r| ≥ 0.60   Method: {method}   n = {n_obs} observations")
+            fig_hm = go.Figure(go.Heatmap(
+                z=z_lo, x=labels, y=labels,
+                text=annot, texttemplate="%{text}",
+                textfont={"size": 8},
+                colorscale="RdBu_r", zmid=0, zmin=-1, zmax=1,
+                showscale=True,
+                colorbar=dict(title=dict(text="r", font=dict(size=11)), tickfont=dict(size=10), len=0.55),
+                hoverongaps=False,
+                hovertemplate="<b>%{y}</b>  x  <b>%{x}</b><br>r = %{z:.3f}<extra></extra>",
+            ))
+            fig_hm.update_layout(**_PLY, height=530, margin=dict(l=0, r=0, t=10, b=0),
+                xaxis=dict(tickangle=-40, tickfont=dict(size=8.5), showgrid=False),
+                yaxis=dict(tickfont=dict(size=8.5), showgrid=False),
+            )
+            st.plotly_chart(fig_hm, use_container_width=True)
+            st.caption(f"** = |r| >= {threshold:.2f} (redundant)   * = |r| >= 0.60   Method: {method}   n = {n_obs} observations")
+    else:
+        st.markdown(
+            '<div style="padding:18px 20px;border-radius:8px;background:rgba(128,128,128,0.07);'
+            'border:1px solid rgba(128,128,128,0.15);color:#888;font-size:0.82rem;">'
+            'Heatmap is off — toggle it on above when you need it. '
+            'The redundancy analysis below runs instantly without it.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     st.divider()
     st.markdown('<div class="section-hd">Analysis — Factor Groups</div>', unsafe_allow_html=True)
@@ -604,8 +614,9 @@ with tab1:
     if len(an_factors) < 2:
         st.info("Select at least 2 factor groups for the analysis.")
         st.stop()
-    an_corr   = compute_corr(df[an_factors], method)
-    an_order  = cluster_order(an_corr)
+    _an_key   = f"{_parquet_hash()}_{tuple(an_factors)}_{method}"
+    an_corr   = compute_corr(_an_key, tuple(an_factors), method, df)
+    an_order  = cluster_order(str(an_corr.values.tobytes()), an_corr)
     an_corr_o = an_corr.loc[an_order, an_order]
     groups        = find_redundant_groups(an_corr_o, threshold)
     redundant_set = {d for v in groups.values() for d in v}
