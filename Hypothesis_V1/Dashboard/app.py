@@ -95,65 +95,96 @@ st.markdown("""
 if st.session_state.theme == "light":
     st.markdown("""
 <style>
-  /* ── Backgrounds ── */
+  /* ── Page backgrounds ── */
   [data-testid="stApp"],
   [data-testid="stAppViewContainer"],
-  [data-testid="stMain"], .main         { background-color: #f5f7fa !important; }
-  [data-testid="stHeader"]              { background-color: #f5f7fa !important;
-                                          border-bottom: 1px solid #dde1e7 !important; }
-  [data-testid="stHeader"] *,
-  [data-testid="stToolbar"] *           { color: #1e293b !important;
-                                          filter: invert(1) hue-rotate(180deg) !important; }
+  [data-testid="stMain"], .main         { background-color: #f0f4f8 !important; }
+  [data-testid="stHeader"]              { background-color: #ffffff !important;
+                                          border-bottom: 1px solid #e2e8f0 !important;
+                                          box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important; }
   [data-testid="stSidebar"],
-  [data-testid="stSidebarContent"]      { background-color: #eaecf0 !important;
-                                          border-right: 1px solid #dde1e7 !important; }
+  [data-testid="stSidebarContent"]      { background-color: #ffffff !important;
+                                          border-right: 1px solid #e2e8f0 !important; }
+  .block-container                      { background-color: #f0f4f8 !important; }
 
   /* ── Text ── */
-  [data-testid="stSidebar"] *           { color: #1e293b !important; }
-  [data-testid="stMain"] *, .main *     { color: #1e293b !important; }
-  [data-testid="stMetricValue"]         { color: #0f172a !important; }
-  [data-testid="stMetricLabel"]         { color: #475569 !important; }
-  p, span, label, div                   { color: #1e293b !important; }
+  [data-testid="stSidebar"] *           { color: #0f172a !important; }
+  [data-testid="stMain"] *, .main *     { color: #0f172a !important; }
+  h1, h2, h3                            { color: #0f172a !important; }
+  p, span, label                        { color: #334155 !important; }
+  [data-testid="stMetricValue"]         { color: #0f172a !important; font-weight: 700 !important; }
+  [data-testid="stMetricLabel"]         { color: #64748b !important; }
 
   /* ── Tabs ── */
-  div[data-baseweb="tab-list"]          { background: #dde1e7 !important; }
-  div[data-baseweb="tab"] button        { color: #475569 !important; }
-  div[data-baseweb="tab"][aria-selected="true"] button { color: #0f172a !important; }
+  div[data-baseweb="tab-list"]          { background: #e2e8f0 !important; border-radius: 8px !important;
+                                          padding: 3px !important; }
+  div[data-baseweb="tab"] button        { color: #64748b !important; border-radius: 6px !important; }
+  div[data-baseweb="tab"][aria-selected="true"] button
+                                        { color: #0f172a !important; font-weight: 600 !important;
+                                          background: #ffffff !important;
+                                          box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important; }
 
   /* ── Inputs / selects ── */
-  div[data-baseweb="select"] > div,
-  div[data-baseweb="input"] > div       { background: #ffffff !important; border-color: #c8cdd5 !important; }
-  div[data-baseweb="select"] *,
-  div[data-baseweb="input"] *           { color: #1e293b !important; background: transparent !important; }
+  div[data-baseweb="select"] > div      { background: #ffffff !important;
+                                          border-color: #cbd5e1 !important;
+                                          box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important; }
+  div[data-baseweb="select"] *          { color: #0f172a !important; }
   div[data-baseweb="popover"] *,
-  ul[role="listbox"] *                  { background: #ffffff !important; color: #1e293b !important; }
+  ul[role="listbox"] li                 { background: #ffffff !important; color: #0f172a !important; }
+  ul[role="listbox"] li:hover           { background: #f1f5f9 !important; }
 
-  /* ── Cards ── */
-  .kpi                                  { background: #ffffff !important; border: 1px solid #dde1e7 !important; }
+  /* ── KPI cards ── */
+  .kpi                                  { background: #ffffff !important;
+                                          border: 1px solid #e2e8f0 !important;
+                                          box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important; }
   .kpi .num                             { color: #0f172a !important; }
   .kpi .lbl                             { color: #64748b !important; opacity: 1 !important; }
-  .insight-box, .ac-card, .p2-interp   { background: #ffffff !important; border: 1px solid #dde1e7 !important; }
+
+  /* ── Content cards ── */
+  .insight-box, .ac-card, .p2-interp   { background: #ffffff !important;
+                                          border: 1px solid #e2e8f0 !important;
+                                          box-shadow: 0 1px 4px rgba(0,0,0,0.05) !important; }
   .insight-box p, .ac-card p,
   .p2-interp p                          { color: #334155 !important; opacity: 1 !important; }
   .insight-box b, .ac-card b,
   .p2-interp b                          { color: #0f172a !important; opacity: 1 !important; }
-  .section-hd, .ac-hd                  { color: #64748b !important; opacity: 1 !important; }
 
-  /* ── Chips — full light-mode recolour ── */
-  .chip-r { background: #fff0f0 !important; border-color: #fca5a5 !important; color: #dc2626 !important; }
+  /* ── Section headers ── */
+  .section-hd, .ac-hd                  { color: #94a3b8 !important; opacity: 1 !important;
+                                          letter-spacing: 0.12em !important; }
+
+  /* ── Chips ── */
+  .chip-r { background: #fef2f2 !important; border-color: #fca5a5 !important; color: #dc2626 !important; }
   .chip-g { background: #f0fdf4 !important; border-color: #86efac !important; color: #16a34a !important; }
-  .chip-b { background: #eff6ff !important; border-color: #93c5fd !important; color: #2563eb !important; }
+  .chip-b { background: #eff6ff !important; border-color: #93c5fd !important; color: #1d4ed8 !important; }
 
   /* ── Multiselect tags ── */
-  span[data-baseweb="tag"]              { background: #e0f2fe !important; border-color: #7dd3fc !important; }
-  span[data-baseweb="tag"] span         { color: #0369a1 !important; }
+  span[data-baseweb="tag"]              { background: #dcfce7 !important; border-color: #86efac !important; }
+  span[data-baseweb="tag"] span         { color: #15803d !important; }
 
-  /* ── Dataframe ── */
-  div[data-testid="stDataFrame"],
-  div[data-testid="stDataFrame"] *      { color: #1e293b !important; background: #ffffff !important; }
+  /* ── Dataframe — color only, no background override (avoids white-on-white) ── */
+  div[data-testid="stDataFrame"]        { border: 1px solid #e2e8f0 !important;
+                                          border-radius: 8px !important;
+                                          box-shadow: 0 1px 4px rgba(0,0,0,0.05) !important; }
 
-  /* ── Bar track ── */
-  .p2-bar-track                         { background: #dde1e7 !important; }
+  /* ── Plotly chart containers ── */
+  div[data-testid="stPlotlyChart"]      { background: #ffffff !important;
+                                          border: 1px solid #e2e8f0 !important;
+                                          border-radius: 10px !important;
+                                          padding: 8px !important;
+                                          box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important; }
+
+  /* ── Progress / bar tracks ── */
+  .p2-bar-track, .p2-mid-wrap           { background: #e2e8f0 !important; }
+
+  /* ── Checkboxes, toggles ── */
+  div[data-testid="stCheckbox"] label   { color: #334155 !important; }
+
+  /* ── Slider ── */
+  div[data-testid="stSlider"] *         { color: #334155 !important; }
+
+  /* ── Dividers ── */
+  hr                                    { border-color: #e2e8f0 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -613,11 +644,17 @@ retained_per_group, group_comp_stats, factor_icir_map = compute_composite_stats(
 )
 
 
-# neutral Plotly defaults that work on both dark and light Streamlit themes
-_PLY = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#888888", size=10))
-_GRID = "rgba(128,128,128,0.2)"
-_LINE = "rgba(128,128,128,0.4)"
+# Plotly defaults — theme-aware
+if st.session_state.theme == "light":
+    _PLY  = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#ffffff",
+                 font=dict(color="#374151", size=10))
+    _GRID = "rgba(0,0,0,0.07)"
+    _LINE = "rgba(0,0,0,0.15)"
+else:
+    _PLY  = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                 font=dict(color="#888888", size=10))
+    _GRID = "rgba(128,128,128,0.2)"
+    _LINE = "rgba(128,128,128,0.4)"
 
 
 # ── Header ─────────────────────────────────────────────────────────────────────
