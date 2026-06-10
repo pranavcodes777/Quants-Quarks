@@ -279,6 +279,19 @@ if st.session_state.theme == "light":
 
   /* ── Dividers ── */
   hr                                    { border-color: #e2e8f0 !important; }
+
+  /* ── Tooltips (st.metric help, st.expander info, any native Streamlit tooltip) ── */
+  div[data-testid="stTooltipContent"],
+  div[data-testid="stTooltipHoverTarget"] + div,
+  [data-testid="stTooltipContent"] > div,
+  div[role="tooltip"],
+  div[data-baseweb="tooltip"] > div     { background: #ffffff !important;
+                                          color: #0f172a !important;
+                                          border: 1px solid #e2e8f0 !important;
+                                          border-radius: 6px !important;
+                                          box-shadow: 0 4px 12px rgba(0,0,0,0.12) !important; }
+  [data-baseweb="tooltip"] *,
+  [data-testid="stTooltipContent"] *    { color: #0f172a !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -741,10 +754,13 @@ retained_per_group, group_comp_stats, factor_icir_map = compute_composite_stats(
 # Plotly defaults — theme-aware
 if st.session_state.theme == "light":
     _PLY       = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#f8fafc",
-                      font=dict(color="#0f172a", size=11))
+                      font=dict(color="#0f172a", size=11),
+                      hoverlabel=dict(bgcolor="#ffffff", font_color="#0f172a",
+                                      bordercolor="#cbd5e1", font_size=11, font_family="monospace"))
     _GRID      = "rgba(15,23,42,0.1)"
     _LINE      = "rgba(15,23,42,0.25)"
     _ANNOT_CLR = "#475569"
+    _HOVER_BG  = "#ffffff"
     _VD = {
         "strong": ("#dcfce7", "#16a34a", "#15803d"),
         "usable": ("#f0fdf4", "#22c55e", "#16a34a"),
@@ -754,7 +770,10 @@ if st.session_state.theme == "light":
     }
 else:
     _PLY       = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                      font=dict(color="#888888", size=10))
+                      font=dict(color="#888888", size=10),
+                      hoverlabel=dict(bgcolor="#1c2128", font_color="#e6edf3",
+                                      bordercolor="#30363d", font_size=11, font_family="monospace"))
+    _HOVER_BG  = "#1c2128"
     _GRID      = "rgba(128,128,128,0.2)"
     _LINE      = "rgba(128,128,128,0.4)"
     _ANNOT_CLR = "#aaaaaa"
@@ -1835,7 +1854,7 @@ with tab5:
             xaxis=dict(tickangle=-32, showgrid=False, tickfont=dict(size=10)),
             yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False, tickformat=".2f",
                        range=[-0.1, _cmp_max * 1.30]),
-            hoverlabel=dict(bgcolor="#1c2128", font_size=11, font_family="monospace"),
+            hoverlabel=dict(bgcolor=_HOVER_BG, font_size=11, font_family="monospace"),
             bargap=0.25,
         )
         st.plotly_chart(fig_cmp, use_container_width=True)
@@ -2178,7 +2197,7 @@ with tab5:
                     margin=dict(l=0, r=80, t=45, b=55),
                     yaxis=dict(autorange="reversed", showgrid=False, tickfont=dict(size=10)),
                     xaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False),
-                    hoverlabel=dict(bgcolor="#1c2128", font_size=11, font_family="monospace"),
+                    hoverlabel=dict(bgcolor=_HOVER_BG, font_size=11, font_family="monospace"),
                 )
                 st.plotly_chart(fig_lb, use_container_width=True)
     
