@@ -2823,7 +2823,7 @@ with tab7:
                     # IC Heatmap: groups × horizons
                     _hm_pivot = _valid.pivot(index="Group", columns="Horizon", values="MeanIC")
                     _hm_pivot = _hm_pivot.reindex(columns=[h for h in ["1Y", "2Y", "3Y"] if h in _hm_pivot.columns])
-                    _hm_text  = _hm_pivot.applymap(lambda v: f"{v:.3f}" if not np.isnan(v) else "—")
+                    _hm_text  = _hm_pivot.map(lambda v: f"{v:.3f}" if not (isinstance(v, float) and np.isnan(v)) else "—")
 
                     fig_hm = go.Figure(go.Heatmap(
                         z=_hm_pivot.values.tolist(),
