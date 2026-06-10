@@ -1854,7 +1854,6 @@ with tab5:
             xaxis=dict(tickangle=-32, showgrid=False, tickfont=dict(size=10)),
             yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False, tickformat=".2f",
                        range=[-0.1, _cmp_max * 1.30]),
-            hoverlabel=dict(bgcolor=_HOVER_BG, font_size=11, font_family="monospace"),
             bargap=0.25,
         )
         st.plotly_chart(fig_cmp, use_container_width=True)
@@ -2197,8 +2196,7 @@ with tab5:
                     margin=dict(l=0, r=80, t=45, b=55),
                     yaxis=dict(autorange="reversed", showgrid=False, tickfont=dict(size=10)),
                     xaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False),
-                    hoverlabel=dict(bgcolor=_HOVER_BG, font_size=11, font_family="monospace"),
-                )
+                        )
                 st.plotly_chart(fig_lb, use_container_width=True)
     
                 st.caption(
