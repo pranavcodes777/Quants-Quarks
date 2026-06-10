@@ -29,6 +29,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+if "theme" not in st.session_state:
+    st.session_state.theme = "dark"
+
 # ── CSS — uses Streamlit CSS variables so dark/light toggle (⋮ → Settings) works
 st.markdown("""
 <style>
@@ -82,8 +85,47 @@ st.markdown("""
   div[data-testid="stMetricValue"] { font-size: 1.25rem !important; }
   div[data-testid="stMetricLabel"] { font-size: 0.68rem !important; }
   div[data-testid="stMetricDelta"] { font-size: 0.68rem !important; }
+
+  /* Theme toggle column — remove padding so button sits flush */
+  div[data-testid="stHorizontalBlock"] > div:last-child { padding: 0 !important; }
 </style>
 """, unsafe_allow_html=True)
+
+# ── Light mode CSS override ────────────────────────────────────────────────────
+if st.session_state.theme == "light":
+    st.markdown("""
+<style>
+  [data-testid="stApp"],
+  [data-testid="stAppViewContainer"],
+  [data-testid="stMain"],
+  .main { background-color: #f8fafc !important; }
+
+  [data-testid="stSidebar"] { background-color: #f1f5f9 !important; }
+  [data-testid="stSidebar"] * { color: #0f172a !important; }
+
+  [data-testid="stMain"] *,
+  .main * { color: #0f172a !important; }
+
+  [data-testid="stMetricValue"],
+  [data-testid="stMetricLabel"],
+  [data-testid="stMetricDelta"] { color: #0f172a !important; }
+
+  div[data-baseweb="tab-list"]          { background: #e2e8f0 !important; }
+  div[data-baseweb="tab-highlight"]     { background: #2563eb !important; }
+  div[data-baseweb="tab"] *             { color: #334155 !important; }
+  div[data-baseweb="select"] *,
+  div[data-baseweb="input"] *           { background: #f1f5f9 !important; color: #0f172a !important; }
+
+  .kpi, .insight-box, .ac-card,
+  .p2-interp                            { background: #f1f5f9 !important; border-color: #cbd5e1 !important; }
+  .kpi .num, .kpi .lbl                  { color: #0f172a !important; }
+  .section-hd, .ac-hd                   { color: #475569 !important; }
+
+  div[data-testid="stDataFrame"] *      { color: #0f172a !important; background: #f8fafc !important; }
+  .theme-toggle-btn button              { color: #0f172a !important; }
+</style>
+""", unsafe_allow_html=True)
+
 
 # ── Factor metadata ────────────────────────────────────────────────────────────
 FACTOR_META: dict[str, dict] = {
@@ -490,6 +532,13 @@ def compute_composite_stats(sector: str, companies: tuple, yr_lo: int, yr_hi: in
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## ◈ Hypothesis V1")
+    _light = st.toggle("☀️ Light mode", value=(st.session_state.theme == "light"), key="theme_toggle")
+    if _light and st.session_state.theme == "dark":
+        st.session_state.theme = "light"
+        st.rerun()
+    elif not _light and st.session_state.theme == "light":
+        st.session_state.theme = "dark"
+        st.rerun()
     st.divider()
 
     sector = st.selectbox("Sector", list(SECTORS.keys()))
