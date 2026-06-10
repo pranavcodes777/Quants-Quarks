@@ -743,6 +743,18 @@ if df.empty:
 avail  = [f for f in FACTOR_COLS if f in df.columns and df[f].notna().sum() > 5]
 df_fwd = df[df["Return_1Y_Fwd"].notna()].copy()
 
+# ── Multi-horizon forward returns (for signal decay analysis in Tab 7) ──────
+# Return_2Y_Fwd / Return_3Y_Fwd = compound of consecutive 1Y returns
+_r1h = df_fwd[["Company", "year", "Return_1Y_Fwd"]].dropna().copy()
+_rn1 = _r1h.copy();  _rn1["year"] -= 1;  _rn1 = _rn1.rename(columns={"Return_1Y_Fwd": "_R1"})
+_rn2 = _r1h.copy();  _rn2["year"] -= 2;  _rn2 = _rn2.rename(columns={"Return_1Y_Fwd": "_R2"})
+df_mh = (_r1h
+    .merge(_rn1[["Company", "year", "_R1"]], on=["Company", "year"])
+    .merge(_rn2[["Company", "year", "_R2"]], on=["Company", "year"]))
+df_mh["Return_2Y_Fwd"] = ((1 + df_mh["Return_1Y_Fwd"]/100)*(1 + df_mh["_R1"]/100) - 1)*100
+df_mh["Return_3Y_Fwd"] = ((1 + df_mh["Return_1Y_Fwd"]/100)*(1 + df_mh["_R1"]/100)*(1 + df_mh["_R2"]/100) - 1)*100
+df_mh = df_mh[["Company", "year", "Return_1Y_Fwd", "Return_2Y_Fwd", "Return_3Y_Fwd"]]
+
 # Pre-compute composites (cached — runs once per sector/filter/threshold combo)
 retained_per_group, group_comp_stats, factor_icir_map = compute_composite_stats(
     sector, tuple(sorted(sel_cos)),
@@ -805,7 +817,11 @@ st.markdown(f"""
 
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["  Correlation Matrix  ", "  Factor Explorer  ", "  Company Snapshot  ", "  Factor Predictability  ", "  Alpha Composite  ", "  Quintile Backtest  "])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    "  Correlation Matrix  ", "  Factor Explorer  ", "  Company Snapshot  ",
+    "  Factor Predictability  ", "  Alpha Composite  ", "  Quintile Backtest  ",
+    "  Edge Intelligence  ",
+])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2337,6 +2353,31 @@ with tab6:
                     if len(_sp_vals) >= 2 and np.std(_sp_vals, ddof=1) > 0 else 0.0)
     _ew_avg      = float(np.mean(list(_ew_yr.values()))) if _ew_yr else 0.0
 
+    # ── Risk-adjusted metrics ─────────────────────────────────────────────────
+    _RF_PCT      = 6.0   # approximate India 10Y Gsec yield as risk-free rate
+    _q1_yr_rets  = [
+        float(_qt_df[(_qt_df["year"] == y) & (_qt_df["Quintile"] == "Q1")]["AvgReturn"].iloc[0])
+        for y in sorted(_spread_yr.keys())
+        if len(_qt_df[(_qt_df["year"] == y) & (_qt_df["Quintile"] == "Q1")]) > 0
+    ]
+    if len(_q1_yr_rets) >= 2:
+        _q1_exc    = [r - _RF_PCT for r in _q1_yr_rets]
+        _exc_std   = float(np.std(_q1_exc, ddof=1))
+        _q1_sharpe = float(np.mean(_q1_exc)) / _exc_std if _exc_std > 0 else np.nan
+        _down_r    = [e for e in _q1_exc if e < 0]
+        _down_std  = float(np.std(_down_r, ddof=1)) if len(_down_r) > 1 else np.nan
+        _q1_sortino = float(np.mean(_q1_exc)) / _down_std if _down_std and _down_std > 0 else np.nan
+        _dd_cum    = [100.0]
+        for _r_ in _q1_yr_rets:
+            _dd_cum.append(_dd_cum[-1] * (1 + _r_ / 100))
+        _dd_arr    = np.array(_dd_cum)
+        _pk_arr    = np.maximum.accumulate(_dd_arr)
+        _dd_series = (_dd_arr - _pk_arr) / _pk_arr * 100
+        _max_dd    = float(_dd_series.min())
+        _calmar    = (float(np.mean(_q1_yr_rets)) - _RF_PCT) / abs(_max_dd) if _max_dd != 0 else np.nan
+    else:
+        _q1_sharpe = _q1_sortino = _max_dd = _calmar = float("nan")
+
     # ── KPI strip ─────────────────────────────────────────────────────────────
     _k1, _k2, _k3, _k4, _k5, _k6 = st.columns(6)
     _k1.metric("Q1 Avg Return",  f"{_q1_avg:+.1f}%",
@@ -2349,6 +2390,16 @@ with tab6:
     _k5.metric("Spread IC-IR",   f"{_sp_icir:+.2f}",
                help="Mean spread / Std spread — consistency of the alpha")
     _k6.metric("Years Tested",   _n_yrs_t6)
+    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+    _r1, _r2, _r3, _r4 = st.columns(4)
+    _r1.metric("Sharpe Q1",    f"{_q1_sharpe:.2f}"  if not np.isnan(_q1_sharpe)  else "—",
+               help=f"(Q1 return − {_RF_PCT:.0f}% Rf) / std. >1.0 = strong risk-adjusted performance")
+    _r2.metric("Sortino Q1",   f"{_q1_sortino:.2f}" if not np.isnan(_q1_sortino) else "—",
+               help="Sharpe using only downside deviation. Penalises losses, not upside volatility")
+    _r3.metric("Max Drawdown", f"{_max_dd:.1f}%"    if not np.isnan(_max_dd)     else "—",
+               help="Worst peak-to-trough decline in Q1 cumulative wealth curve")
+    _r4.metric("Calmar Ratio", f"{_calmar:.2f}"     if not np.isnan(_calmar)     else "—",
+               help="Annualised excess return / |Max Drawdown|. >0.5 = acceptable, >1.0 = excellent")
 
     st.divider()
 
@@ -2507,9 +2558,98 @@ with tab6:
             f"The gap between Q1 and Q5 is the total edge of this scoring system over the period."
         )
     
-        st.divider()
-    
-        # ══════════════════════════════════════════════════════════════════════════
+    with st.expander("Risk-Adjusted Performance — Sharpe · Sortino · Drawdown · Calmar", expanded=True):
+        st.markdown('<div class="ac-hd">Risk-Adjusted Performance — Q1 bucket viewed through a hedge fund lens</div>', unsafe_allow_html=True)
+
+        if len(_q1_yr_rets) >= 2:
+            _ra_yrs = sorted(_spread_yr.keys())[:len(_q1_yr_rets)]
+
+            # ── Year-by-year Q1 excess return bar ────────────────────────────
+            _exc_colors = ["#3fb950" if e >= 0 else "#f85149" for e in _q1_exc]
+            fig_exc = go.Figure()
+            fig_exc.add_trace(go.Bar(
+                x=[str(int(y)) for y in _ra_yrs], y=_q1_exc,
+                marker_color=_exc_colors,
+                text=[f"{v:+.1f}%" for v in _q1_exc],
+                textposition="outside", textfont=dict(size=9, color=_ANNOT_CLR),
+                hovertemplate="<b>FY%{x}</b><br>Q1 excess return: <b>%{y:+.1f}%</b><extra></extra>",
+            ))
+            fig_exc.add_hline(y=0, line_color=_LINE, line_dash="dot", line_width=1)
+            fig_exc.add_hline(y=float(np.mean(_q1_exc)), line_color="#f0b429", line_dash="solid", line_width=1.5,
+                              annotation_text=f"Mean {float(np.mean(_q1_exc)):+.1f}%",
+                              annotation_font=dict(color="#f0b429", size=9), annotation_position="top right")
+            fig_exc.update_layout(**_PLY,
+                title=dict(text=f"Q1 Annual Excess Return over {_RF_PCT:.0f}% Risk-Free  ·  {_q1_sharpe:.2f} Sharpe", font=dict(size=12)),
+                height=260, margin=dict(l=0, r=0, t=40, b=55),
+                xaxis=dict(type="category", showgrid=False, tickfont=dict(size=10)),
+                yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False, ticksuffix="%"),
+                bargap=0.3,
+            )
+            st.plotly_chart(fig_exc, use_container_width=True)
+
+            # ── Drawdown underwater chart ─────────────────────────────────────
+            _dd_x = ["Start"] + [str(int(y)) for y in _ra_yrs]
+            _dd_y = list(_dd_series)
+            fig_dd = go.Figure()
+            fig_dd.add_trace(go.Scatter(
+                x=_dd_x, y=_dd_y,
+                mode="lines", fill="tozeroy",
+                line=dict(color="#f85149", width=1.5),
+                fillcolor="rgba(248,81,73,0.15)",
+                hovertemplate="<b>%{x}</b><br>Drawdown: <b>%{y:.1f}%</b><extra></extra>",
+            ))
+            fig_dd.add_hline(y=_max_dd, line_color="#f85149", line_dash="dot", line_width=1,
+                             annotation_text=f"Max DD {_max_dd:.1f}%",
+                             annotation_font=dict(color="#f85149", size=9), annotation_position="bottom right")
+            fig_dd.update_layout(**_PLY,
+                title=dict(text="Q1 Underwater Equity Curve  ·  drawdown from peak wealth", font=dict(size=12)),
+                height=220, margin=dict(l=0, r=0, t=40, b=55),
+                xaxis=dict(type="category", showgrid=False, tickfont=dict(size=10)),
+                yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False, ticksuffix="%",
+                           range=[min(_dd_y) * 1.2, 5]),
+            )
+            st.plotly_chart(fig_dd, use_container_width=True)
+
+            # ── Rolling 3-year Sharpe ─────────────────────────────────────────
+            _roll_sh_x = []; _roll_sh_y = []
+            for _ri in range(2, len(_q1_yr_rets)):
+                _w = [r - _RF_PCT for r in _q1_yr_rets[max(0, _ri-2):_ri+1]]
+                _rs = float(np.mean(_w)) / float(np.std(_w, ddof=1)) if np.std(_w, ddof=1) > 0 else np.nan
+                _roll_sh_x.append(str(int(_ra_yrs[_ri])))
+                _roll_sh_y.append(_rs)
+
+            if len(_roll_sh_x) >= 2:
+                _rs_colors = ["#3fb950" if v >= 1.0 else ("#f0b429" if v >= 0 else "#f85149") for v in _roll_sh_y]
+                fig_rsh = go.Figure()
+                fig_rsh.add_hrect(y0=1.0, y1=max(_roll_sh_y + [1.1]) * 1.1,
+                                  fillcolor="rgba(63,185,80,0.05)", line_width=0)
+                fig_rsh.add_trace(go.Scatter(
+                    x=_roll_sh_x, y=_roll_sh_y, mode="lines+markers",
+                    line=dict(color="#58a6ff", width=2),
+                    marker=dict(size=7, color=_rs_colors,
+                                line=dict(width=1, color="rgba(255,255,255,0.2)")),
+                    hovertemplate="<b>FY%{x}</b><br>3yr Rolling Sharpe: <b>%{y:.2f}</b><extra></extra>",
+                ))
+                fig_rsh.add_hline(y=1.0, line_color="#3fb950", line_dash="dot", line_width=1,
+                                  annotation_text="Sharpe 1.0", annotation_font=dict(color="#3fb950", size=9))
+                fig_rsh.add_hline(y=0,   line_color=_LINE,    line_dash="dot", line_width=1)
+                fig_rsh.update_layout(**_PLY,
+                    title=dict(text="Rolling 3-Year Sharpe Ratio  ·  above 1.0 = consistently strong risk-adjusted alpha", font=dict(size=12)),
+                    height=240, margin=dict(l=0, r=0, t=40, b=55),
+                    xaxis=dict(type="category", showgrid=False, tickfont=dict(size=10)),
+                    yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False, tickformat=".2f"),
+                )
+                st.plotly_chart(fig_rsh, use_container_width=True)
+
+            st.caption(
+                f"Risk-free rate used: {_RF_PCT:.0f}% (approx. India 10Y Gsec yield). "
+                f"Sharpe = {_q1_sharpe:.2f}  ·  Sortino = {_q1_sortino:.2f}  ·  "
+                f"Max Drawdown = {_max_dd:.1f}%  ·  Calmar = {_calmar:.2f}. "
+                f"All metrics based on annual Q1 bucket average returns — no transaction costs assumed."
+            )
+        else:
+            st.info("Need at least 2 years of Q1 data to compute risk metrics.")
+
     with st.expander("Verdict + The Answer — Q1 Company Rankings", expanded=True):
         # VERDICT + THE ANSWER
         # ══════════════════════════════════════════════════════════════════════════
@@ -2602,3 +2742,510 @@ with tab6:
             f"Score = IC-IR-weighted composite. Higher = historically better return predictor. "
             f"This is a statistical ranking — not investment advice. Apply your own due diligence."
         )
+
+# ══════════════════════════════════════════════════════════════════════════
+# TAB 7 — EDGE INTELLIGENCE
+# ══════════════════════════════════════════════════════════════════════════
+with tab7:
+    st.markdown('<div class="ac-hd">Edge Intelligence — Signal Decay · Persistence · Screener</div>', unsafe_allow_html=True)
+    st.caption(
+        "Three lenses a quant fund uses to move from 'this factor works' to 'which names to own today'. "
+        "Section 1 tests how far into the future your signal stays predictive. "
+        "Section 2 measures which companies consistently land in the top quintile year after year. "
+        "Section 3 builds a shortlist using all three dimensions as one Confidence Score."
+    )
+
+    # ── All groups available in this tab ─────────────────────────────────
+    _ei_groups = [g for g in group_comp_stats if "scores_by_year" in group_comp_stats[g]
+                  and len(group_comp_stats[g]["scores_by_year"]) >= 2]
+
+    # ══════════════════════════════════════════════════════════════════════
+    # SECTION 1 — SIGNAL DECAY
+    # ══════════════════════════════════════════════════════════════════════
+    with st.expander("Section 1 — Signal Decay: How Far Into the Future Does Your Factor Predict?", expanded=True):
+        st.markdown('<div class="ac-hd">Signal Decay — Multi-Horizon IC (1Y · 2Y · 3Y)</div>', unsafe_allow_html=True)
+        st.caption(
+            "A signal that is strong at 1-year but flat at 3-year decays fast — good for annual rebalancing. "
+            "A signal that builds over 3 years is a structural tailwind. "
+            "IC = Pearson correlation of composite score with forward returns."
+        )
+
+        _sd_default = _ei_groups[:min(4, len(_ei_groups))]
+        _sd_sel = st.multiselect("Groups to analyse", _ei_groups, default=_sd_default, key="sd_grp")
+        _sd_hz  = st.multiselect("Horizons", ["1Y", "2Y", "3Y"], default=["1Y", "2Y", "3Y"], key="sd_hz")
+
+        if _sd_sel and _sd_hz:
+            _hz_col_map = {"1Y": "Return_1Y_Fwd", "2Y": "Return_2Y_Fwd", "3Y": "Return_3Y_Fwd"}
+            _hz_avail   = [h for h in _sd_hz if h in _hz_col_map and _hz_col_map[h] in df_mh.columns]
+
+            # Compute IC per group × horizon
+            _decay_rows = []
+            for g in _sd_sel:
+                sby = group_comp_stats[g]["scores_by_year"]
+                for hz in _hz_avail:
+                    hz_col   = _hz_col_map[hz]
+                    _ic_vals = []
+                    for yr, sc_dict in sby.items():
+                        if not sc_dict:
+                            continue
+                        _sub = df_mh[df_mh["year"] == yr][["Company", hz_col]].dropna()
+                        _sub = _sub[_sub["Company"].isin(sc_dict)]
+                        if len(_sub) < 10:
+                            continue
+                        _sub["score"] = _sub["Company"].map(sc_dict)
+                        _sub = _sub.dropna(subset=["score"])
+                        if len(_sub) < 10:
+                            continue
+                        _ic = float(np.corrcoef(_sub["score"], _sub[hz_col])[0, 1])
+                        if not np.isnan(_ic):
+                            _ic_vals.append(_ic)
+                    _mean_ic = float(np.mean(_ic_vals)) if _ic_vals else np.nan
+                    _decay_rows.append({"Group": g, "Horizon": hz, "MeanIC": _mean_ic, "N": len(_ic_vals)})
+
+            if _decay_rows:
+                _decay_df = pd.DataFrame(_decay_rows)
+                _valid = _decay_df.dropna(subset=["MeanIC"])
+
+                if not _valid.empty:
+                    # KPI: best group per horizon
+                    _kpi_cols = st.columns(len(_hz_avail))
+                    for _ki, hz in enumerate(_hz_avail):
+                        _hz_sub = _valid[_valid["Horizon"] == hz]
+                        if not _hz_sub.empty:
+                            _best = _hz_sub.loc[_hz_sub["MeanIC"].idxmax()]
+                            _kpi_cols[_ki].metric(
+                                f"Best {hz} Signal",
+                                _best["Group"][:22],
+                                f"IC {_best['MeanIC']:+.3f}",
+                                help=f"Highest mean IC at {hz} horizon across {int(_best['N'])} yearly observations",
+                            )
+
+                    # IC Heatmap: groups × horizons
+                    _hm_pivot = _valid.pivot(index="Group", columns="Horizon", values="MeanIC")
+                    _hm_pivot = _hm_pivot.reindex(columns=[h for h in ["1Y", "2Y", "3Y"] if h in _hm_pivot.columns])
+                    _hm_text  = _hm_pivot.applymap(lambda v: f"{v:.3f}" if not np.isnan(v) else "—")
+
+                    fig_hm = go.Figure(go.Heatmap(
+                        z=_hm_pivot.values.tolist(),
+                        x=list(_hm_pivot.columns),
+                        y=list(_hm_pivot.index),
+                        text=_hm_text.values.tolist(),
+                        texttemplate="%{text}",
+                        textfont=dict(size=10),
+                        colorscale="RdYlGn",
+                        zmid=0,
+                        zmin=-0.3, zmax=0.3,
+                        colorbar=dict(title="IC", thickness=12, len=0.8),
+                        hovertemplate="<b>%{y}</b>  ·  %{x}<br>Mean IC: <b>%{z:.4f}</b><extra></extra>",
+                    ))
+                    fig_hm.update_layout(**_PLY,
+                        title=dict(text="Mean IC Heatmap — Groups × Horizons  ·  green = positive signal persistence", font=dict(size=12)),
+                        height=max(260, 50 + len(_sd_sel) * 38),
+                        margin=dict(l=0, r=0, t=40, b=55),
+                        xaxis=dict(side="top"),
+                    )
+                    st.plotly_chart(fig_hm, use_container_width=True)
+
+                    # IC Decay Line: one line per group
+                    fig_dc = go.Figure()
+                    _hz_order = [h for h in ["1Y", "2Y", "3Y"] if h in _hz_avail]
+                    _dc_palette = ["#58a6ff", "#3fb950", "#f0b429", "#ff7b72", "#a371f7", "#39d353"]
+                    for _gi, g in enumerate(_sd_sel):
+                        _g_vals  = _valid[_valid["Group"] == g].set_index("Horizon")["MeanIC"]
+                        _g_ys    = [float(_g_vals.get(h, np.nan)) for h in _hz_order]
+                        _g_color = _dc_palette[_gi % len(_dc_palette)]
+                        fig_dc.add_trace(go.Scatter(
+                            x=_hz_order, y=_g_ys,
+                            mode="lines+markers",
+                            name=g[:28],
+                            line=dict(color=_g_color, width=2),
+                            marker=dict(size=8, color=_g_color,
+                                        line=dict(width=1, color="rgba(255,255,255,0.2)")),
+                            hovertemplate=f"<b>{g[:28]}</b><br>%{{x}} horizon IC: <b>%{{y:.3f}}</b><extra></extra>",
+                        ))
+                    fig_dc.add_hline(y=0, line_color=_LINE, line_dash="dot", line_width=1)
+                    fig_dc.update_layout(**_PLY,
+                        title=dict(text="IC Decay Profile — how signal strength evolves across horizons", font=dict(size=12)),
+                        height=300, margin=dict(l=0, r=0, t=40, b=55),
+                        xaxis=dict(showgrid=False, tickfont=dict(size=11)),
+                        yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False, tickformat=".3f"),
+                        legend=dict(orientation="h", y=-0.18, font=dict(size=9)),
+                    )
+                    st.plotly_chart(fig_dc, use_container_width=True)
+
+                    # Interpretation card
+                    _fast_decay = [g for g in _sd_sel
+                                   if all(not np.isnan(float(_valid[(_valid["Group"] == g) & (_valid["Horizon"] == h)]["MeanIC"].values[0]))
+                                          if len(_valid[(_valid["Group"] == g) & (_valid["Horizon"] == h)]) > 0 else True
+                                          for h in ["1Y", "3Y"])
+                                   and len(_valid[(_valid["Group"] == g) & (_valid["Horizon"] == "1Y")]) > 0
+                                   and len(_valid[(_valid["Group"] == g) & (_valid["Horizon"] == "3Y")]) > 0
+                                   and float(_valid[(_valid["Group"] == g) & (_valid["Horizon"] == "1Y")]["MeanIC"].values[0]) >
+                                      float(_valid[(_valid["Group"] == g) & (_valid["Horizon"] == "3Y")]["MeanIC"].values[0]) + 0.02
+                                   ]
+                    _slow_build = [g for g in _sd_sel
+                                   if len(_valid[(_valid["Group"] == g) & (_valid["Horizon"] == "1Y")]) > 0
+                                   and len(_valid[(_valid["Group"] == g) & (_valid["Horizon"] == "3Y")]) > 0
+                                   and float(_valid[(_valid["Group"] == g) & (_valid["Horizon"] == "3Y")]["MeanIC"].values[0]) >
+                                      float(_valid[(_valid["Group"] == g) & (_valid["Horizon"] == "1Y")]["MeanIC"].values[0]) + 0.02
+                                   ]
+                    _interp = []
+                    if _fast_decay:
+                        _interp.append(f"**Fast-decaying:** {', '.join(_fast_decay)} — strongest in year 1, rebalance annually.")
+                    if _slow_build:
+                        _interp.append(f"**Slow-building:** {', '.join(_slow_build)} — gains power over 3 years, suitable for low-turnover portfolios.")
+                    if _interp:
+                        st.info("  \n".join(_interp))
+                else:
+                    st.info("Not enough data to compute multi-horizon IC for the selected groups and horizons.")
+        else:
+            st.info("Select at least one group and one horizon to see signal decay analysis.")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # SECTION 2 — PERSISTENCE SCORE
+    # ══════════════════════════════════════════════════════════════════════
+    with st.expander("Section 2 — Persistence Score: Which Companies Consistently Land in Q1?", expanded=True):
+        st.markdown('<div class="ac-hd">Persistence Score — Q1 Consistency by Company</div>', unsafe_allow_html=True)
+        st.caption(
+            "A company that lands in Q1 in 8 of 10 years is a structural compounder, not a lucky year. "
+            "Persistence = % of years a company appeared in the top quintile of the composite score."
+        )
+
+        _ps_grp_opts = _ei_groups
+        _ps_grp_def  = _ps_grp_opts[:min(3, len(_ps_grp_opts))]
+        _ps_sel   = st.multiselect("Groups for composite scoring", _ps_grp_opts, default=_ps_grp_def, key="ps_grp")
+        _ps_miny  = st.slider("Minimum years company must appear (data quality filter)", 2, 8, 3, key="ps_miny")
+
+        if _ps_sel:
+            # Year-by-year composite: IC-IR weighted mean score per company
+            _all_years  = sorted(set(yr for g in _ps_sel for yr in group_comp_stats[g]["scores_by_year"]))
+            _ps_comp_by_yr: dict[int, dict[str, float]] = {}
+            for yr in _all_years:
+                _yr_scores: dict[str, list[float]] = {}
+                _yr_wts:    dict[str, list[float]] = {}
+                for g in _ps_sel:
+                    _w  = max(group_comp_stats[g].get("ic_ir", 0.0), 0.0)
+                    _sc = group_comp_stats[g]["scores_by_year"].get(yr, {})
+                    for co, s in _sc.items():
+                        _yr_scores.setdefault(co, []).append(s * _w)
+                        _yr_wts.setdefault(co, []).append(_w)
+                _ps_comp_by_yr[yr] = {
+                    co: sum(_yr_scores[co]) / sum(_yr_wts[co])
+                    for co in _yr_scores
+                    if sum(_yr_wts.get(co, [])) > 0
+                }
+
+            # Assign Q1 membership per year
+            _ps_q1_by_yr: dict[int, set[str]] = {}
+            for yr, sc_dict in _ps_comp_by_yr.items():
+                if not sc_dict:
+                    continue
+                _sorted_cos = sorted(sc_dict, key=sc_dict.get, reverse=True)
+                _q1_cut     = max(1, len(_sorted_cos) // 5)
+                _ps_q1_by_yr[yr] = set(_sorted_cos[:_q1_cut])
+
+            # Count per company
+            _ps_total_yrs:  dict[str, int] = {}
+            _ps_q1_count:   dict[str, int] = {}
+            for yr, sc_dict in _ps_comp_by_yr.items():
+                for co in sc_dict:
+                    _ps_total_yrs[co] = _ps_total_yrs.get(co, 0) + 1
+                    if co in _ps_q1_by_yr.get(yr, set()):
+                        _ps_q1_count[co] = _ps_q1_count.get(co, 0) + 1
+
+            _ps_rows = []
+            for co, tot in _ps_total_yrs.items():
+                if tot < _ps_miny:
+                    continue
+                q1c = _ps_q1_count.get(co, 0)
+                _ps_rows.append({
+                    "Company":      co,
+                    "Q1 Years":     q1c,
+                    "Total Years":  tot,
+                    "Persistence%": round(q1c / tot * 100, 1),
+                    "Currently Q1": co in _ps_q1_by_yr.get(max(_ps_q1_by_yr), set()) if _ps_q1_by_yr else False,
+                })
+
+            if _ps_rows:
+                _ps_df = pd.DataFrame(_ps_rows).sort_values("Persistence%", ascending=False).reset_index(drop=True)
+
+                # KPIs
+                _perennial = int((_ps_df["Persistence%"] >= 70).sum())
+                _occasional = int(((_ps_df["Persistence%"] >= 30) & (_ps_df["Persistence%"] < 70)).sum())
+                _cur_q1_n  = int(_ps_df["Currently Q1"].sum())
+                _pk1, _pk2, _pk3 = st.columns(3)
+                _pk1.metric("Perennial Q1 (≥70%)",  str(_perennial),
+                            help="Companies in Q1 for 70%+ of years they appear in data")
+                _pk2.metric("Occasional Q1 (30–69%)", str(_occasional),
+                            help="Companies that pass through Q1 but are not consistently there")
+                _pk3.metric("Currently in Q1",       str(_cur_q1_n),
+                            help=f"In Q1 in FY{int(max(_ps_q1_by_yr))} (most recent year with data)")
+
+                # Top-20 horizontal bar
+                _top20 = _ps_df.head(20)
+                _bar_colors = [
+                    "#3fb950" if p >= 70 else ("#f0b429" if p >= 40 else "#8b949e")
+                    for p in _top20["Persistence%"]
+                ]
+                fig_ps = go.Figure(go.Bar(
+                    y=_top20["Company"],
+                    x=_top20["Persistence%"],
+                    orientation="h",
+                    marker_color=_bar_colors,
+                    text=[f"{p:.0f}%" for p in _top20["Persistence%"]],
+                    textposition="outside",
+                    textfont=dict(size=9, color=_ANNOT_CLR),
+                    customdata=_top20[["Q1 Years", "Total Years"]].values,
+                    hovertemplate="<b>%{y}</b><br>Persistence: <b>%{x:.1f}%</b><br>Q1 in %{customdata[0]} of %{customdata[1]} years<extra></extra>",
+                ))
+                fig_ps.add_vline(x=70, line_color="#3fb950", line_dash="dot", line_width=1,
+                                 annotation_text="Perennial 70%", annotation_font=dict(color="#3fb950", size=9))
+                fig_ps.add_vline(x=40, line_color="#f0b429", line_dash="dot", line_width=1,
+                                 annotation_text="40%", annotation_font=dict(color="#f0b429", size=9))
+                fig_ps.update_layout(**_PLY,
+                    title=dict(text="Top 20 Companies by Q1 Persistence Score", font=dict(size=12)),
+                    height=max(320, len(_top20) * 26 + 80),
+                    margin=dict(l=0, r=60, t=40, b=55),
+                    xaxis=dict(showgrid=True, gridcolor=_GRID, ticksuffix="%", range=[0, 115]),
+                    yaxis=dict(showgrid=False, autorange="reversed", tickfont=dict(size=9)),
+                )
+                st.plotly_chart(fig_ps, use_container_width=True)
+
+                # Scatter: Persistence% × current composite score percentile
+                _latest_yr  = max(_ps_comp_by_yr.keys()) if _ps_comp_by_yr else None
+                if _latest_yr:
+                    _lat_scores = _ps_comp_by_yr[_latest_yr]
+                    _lat_vals   = np.array(list(_lat_scores.values()))
+                    def _pct_rank(s):
+                        return float(np.mean(_lat_vals <= s) * 100)
+
+                    _sc_rows = []
+                    for _, row in _ps_df.iterrows():
+                        co = row["Company"]
+                        if co in _lat_scores:
+                            _sc_rows.append({
+                                "Company":      co,
+                                "Persistence%": row["Persistence%"],
+                                "ScorePct":     _pct_rank(_lat_scores[co]),
+                                "Currently Q1": row["Currently Q1"],
+                            })
+                    if len(_sc_rows) >= 5:
+                        _sc_df = pd.DataFrame(_sc_rows)
+                        _sc_color = ["#3fb950" if q else "#8b949e" for q in _sc_df["Currently Q1"]]
+                        fig_sc = go.Figure()
+                        fig_sc.add_vrect(x0=70, x1=101, y0=70, y1=101,
+                                         fillcolor="rgba(63,185,80,0.06)", line_width=0)
+                        fig_sc.add_annotation(x=85, y=85, text="BUY ZONE",
+                                              font=dict(color="#3fb950", size=11, family="monospace"),
+                                              showarrow=False)
+                        fig_sc.add_trace(go.Scatter(
+                            x=_sc_df["Persistence%"],
+                            y=_sc_df["ScorePct"],
+                            mode="markers",
+                            marker=dict(size=7, color=_sc_color, opacity=0.85,
+                                        line=dict(width=0.5, color="rgba(255,255,255,0.15)")),
+                            text=_sc_df["Company"],
+                            hovertemplate="<b>%{text}</b><br>Persistence: <b>%{x:.1f}%</b><br>Current score percentile: <b>%{y:.1f}%</b><extra></extra>",
+                        ))
+                        fig_sc.update_layout(**_PLY,
+                            title=dict(text=f"Persistence vs Current Score Percentile — FY{int(_latest_yr)}  ·  green = currently in Q1", font=dict(size=12)),
+                            height=360, margin=dict(l=0, r=0, t=40, b=55),
+                            xaxis=dict(showgrid=True, gridcolor=_GRID, title="Persistence %", ticksuffix="%", range=[-2, 105]),
+                            yaxis=dict(showgrid=True, gridcolor=_GRID, title="Current Score Percentile", ticksuffix="%", range=[-2, 105]),
+                        )
+                        st.plotly_chart(fig_sc, use_container_width=True)
+
+                # Full table (collapsible inner)
+                with st.expander("Full Persistence Table", expanded=False):
+                    _ps_df.index = range(1, len(_ps_df) + 1)
+                    _ps_df.index.name = "Rank"
+                    def _ps_style(v):
+                        if isinstance(v, float):
+                            if v >= 70: return "color:#3fb950;font-weight:700"
+                            if v >= 40: return "color:#f0b429"
+                            return "color:#8b949e"
+                        return ""
+                    st.dataframe(
+                        _ps_df.style.map(_ps_style, subset=["Persistence%"]),
+                        use_container_width=True,
+                        height=min(600, (len(_ps_df) + 1) * 36 + 40),
+                    )
+            else:
+                st.info(f"No companies with at least {_ps_miny} years of data. Try lowering the minimum-years slider.")
+        else:
+            st.info("Select at least one group to compute persistence scores.")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # SECTION 3 — STOCK SCREENER
+    # ══════════════════════════════════════════════════════════════════════
+    with st.expander("Section 3 — Stock Screener: The Confidence-Ranked Shortlist", expanded=True):
+        st.markdown('<div class="ac-hd">Stock Screener — Confidence Score = Score Pct × Persistence × Hit Rate</div>', unsafe_allow_html=True)
+        st.caption(
+            "Only groups that pass all three quality gates are included. "
+            "Confidence Score = geometric mean of (current-score percentile, persistence rate, avg hit rate). "
+            "Higher Confidence = a company that scores well NOW, consistently landed in Q1, and belongs to reliable-signal groups."
+        )
+
+        _ss_col1, _ss_col2, _ss_col3, _ss_col4 = st.columns(4)
+        _ss_min_icir = _ss_col1.slider("Min IC-IR",       0.0, 2.0, 0.3, 0.05, key="ss_icir")
+        _ss_max_pval = _ss_col2.slider("Max p-value",     0.0, 0.5, 0.1, 0.01, key="ss_pval")
+        _ss_min_hr   = _ss_col3.slider("Min hit rate %", 30,  80,  50,  5,    key="ss_hr")
+        _ss_grp      = _ss_col4.multiselect("Groups",    _ei_groups,
+                                             default=_ei_groups[:min(5, len(_ei_groups))],
+                                             key="ss_grp")
+
+        # Filter passing groups
+        _pass_grps = [
+            g for g in _ss_grp
+            if group_comp_stats[g].get("ic_ir",    0) >= _ss_min_icir
+            and group_comp_stats[g].get("p_val",    1) <= _ss_max_pval
+            and group_comp_stats[g].get("hit_rate", 0) * 100 >= _ss_min_hr
+        ]
+
+        if not _pass_grps:
+            st.warning("No groups pass the current filters. Try relaxing the IC-IR, p-value, or hit-rate sliders.")
+        else:
+            st.success(f"**{len(_pass_grps)} groups pass** all filters: {', '.join(_pass_grps)}")
+
+            # Build current-year composite with passing groups only
+            _ss_all_yrs = sorted(set(yr for g in _pass_grps for yr in group_comp_stats[g]["scores_by_year"]))
+            _ss_latest  = max(_ss_all_yrs) if _ss_all_yrs else None
+
+            if _ss_latest:
+                _ss_comp: dict[str, list[float]] = {}
+                _ss_wts:  dict[str, list[float]] = {}
+                for g in _pass_grps:
+                    _w  = max(group_comp_stats[g].get("ic_ir", 0.0), 0.0)
+                    _sc = group_comp_stats[g]["scores_by_year"].get(_ss_latest, {})
+                    for co, s in _sc.items():
+                        _ss_comp.setdefault(co, []).append(s * _w)
+                        _ss_wts.setdefault(co, []).append(_w)
+
+                _ss_score = {
+                    co: sum(_ss_comp[co]) / sum(_ss_wts[co])
+                    for co in _ss_comp
+                    if sum(_ss_wts.get(co, [])) > 0
+                }
+
+                if _ss_score:
+                    _ss_vals  = np.array(list(_ss_score.values()))
+                    def _ss_pct(s):
+                        return float(np.mean(_ss_vals <= s))
+
+                    # Rebuild persistence with passing groups
+                    _ss_comp_yrs: dict[int, dict[str, float]] = {}
+                    for yr in _ss_all_yrs:
+                        _yr_s: dict[str, list[float]] = {}
+                        _yr_w: dict[str, list[float]] = {}
+                        for g in _pass_grps:
+                            _w  = max(group_comp_stats[g].get("ic_ir", 0.0), 0.0)
+                            _sc = group_comp_stats[g]["scores_by_year"].get(yr, {})
+                            for co, s in _sc.items():
+                                _yr_s.setdefault(co, []).append(s * _w)
+                                _yr_w.setdefault(co, []).append(_w)
+                        _ss_comp_yrs[yr] = {
+                            co: sum(_yr_s[co]) / sum(_yr_w[co])
+                            for co in _yr_s
+                            if sum(_yr_w.get(co, [])) > 0
+                        }
+
+                    _ss_q1_cnt:  dict[str, int] = {}
+                    _ss_tot_cnt: dict[str, int] = {}
+                    for yr, sc_d in _ss_comp_yrs.items():
+                        if not sc_d:
+                            continue
+                        _sc_sorted = sorted(sc_d, key=sc_d.get, reverse=True)
+                        _q1_cut    = max(1, len(_sc_sorted) // 5)
+                        _q1_set    = set(_sc_sorted[:_q1_cut])
+                        for co in sc_d:
+                            _ss_tot_cnt[co] = _ss_tot_cnt.get(co, 0) + 1
+                            if co in _q1_set:
+                                _ss_q1_cnt[co]  = _ss_q1_cnt.get(co, 0) + 1
+
+                    # Avg hit rate across passing groups
+                    _ss_avg_hr = float(np.mean([group_comp_stats[g].get("hit_rate", 0.5) for g in _pass_grps]))
+
+                    # Build screener rows
+                    _ss_rows = []
+                    for co, s in _ss_score.items():
+                        tot = _ss_tot_cnt.get(co, 0)
+                        q1c = _ss_q1_cnt.get(co, 0)
+                        pers = q1c / tot if tot > 0 else 0.0
+                        sp   = _ss_pct(s)
+                        conf = (sp * pers * _ss_avg_hr) ** (1/3)
+                        tier = "🟢 Perennial" if pers >= 0.7 else ("🟡 Occasional" if pers >= 0.35 else "⚪ Rare")
+                        _ss_rows.append({
+                            "Company":        co,
+                            "Confidence":     round(conf * 100, 1),
+                            "Score Pct":      round(sp * 100, 1),
+                            "Persistence%":   round(pers * 100, 1),
+                            "Avg HR%":        round(_ss_avg_hr * 100, 1),
+                            "Tier":           tier,
+                        })
+
+                    _ss_out = (pd.DataFrame(_ss_rows)
+                               .sort_values("Confidence", ascending=False)
+                               .reset_index(drop=True))
+                    _top_ss = _ss_out.head(25)
+
+                    # Horizontal bar chart — top 25
+                    _tier_clr = {
+                        "🟢 Perennial":  "#3fb950",
+                        "🟡 Occasional": "#f0b429",
+                        "⚪ Rare":       "#8b949e",
+                    }
+                    _bar_c = [_tier_clr.get(t, "#8b949e") for t in _top_ss["Tier"]]
+                    fig_ss = go.Figure(go.Bar(
+                        y=_top_ss["Company"],
+                        x=_top_ss["Confidence"],
+                        orientation="h",
+                        marker_color=_bar_c,
+                        text=[f"{v:.0f}" for v in _top_ss["Confidence"]],
+                        textposition="outside",
+                        textfont=dict(size=9, color=_ANNOT_CLR),
+                        customdata=_top_ss[["Score Pct", "Persistence%", "Tier"]].values,
+                        hovertemplate=(
+                            "<b>%{y}</b><br>"
+                            "Confidence: <b>%{x:.1f}</b><br>"
+                            "Score Pct: %{customdata[0]:.1f}%<br>"
+                            "Persistence: %{customdata[1]:.1f}%<br>"
+                            "Tier: %{customdata[2]}<extra></extra>"
+                        ),
+                    ))
+                    fig_ss.update_layout(**_PLY,
+                        title=dict(text=f"The Shortlist — Top 25 by Confidence Score  ·  FY{int(_ss_latest)}", font=dict(size=12)),
+                        height=max(360, len(_top_ss) * 26 + 80),
+                        margin=dict(l=0, r=60, t=40, b=55),
+                        xaxis=dict(showgrid=True, gridcolor=_GRID, title="Confidence Score (0–100)", range=[0, 115]),
+                        yaxis=dict(showgrid=False, autorange="reversed", tickfont=dict(size=9)),
+                    )
+                    st.plotly_chart(fig_ss, use_container_width=True)
+
+                    # Confidence score explanation
+                    st.info(
+                        f"**Confidence Score** = geometric mean of three independent signals:\n"
+                        f"- **Score Percentile** — where this company ranks on FY{int(_ss_latest)} composite (passing groups only)\n"
+                        f"- **Persistence Rate** — fraction of years company has been in Q1\n"
+                        f"- **Avg Hit Rate** = {_ss_avg_hr*100:.1f}% across {len(_pass_grps)} passing groups\n\n"
+                        f"Score of 100 = top of all three dimensions simultaneously. Above 60 = high conviction."
+                    )
+
+                    # Full table
+                    with st.expander("Full Screener Table (all companies, ranked by Confidence)", expanded=False):
+                        _ss_out.index = range(1, len(_ss_out) + 1)
+                        _ss_out.index.name = "Rank"
+                        def _css_conf(v):
+                            if isinstance(v, float):
+                                if v >= 60: return "color:#3fb950;font-weight:700"
+                                if v >= 35: return "color:#f0b429"
+                                return "color:#8b949e"
+                            return ""
+                        st.dataframe(
+                            _ss_out.style.map(_css_conf, subset=["Confidence"]),
+                            use_container_width=True,
+                            height=min(700, (len(_ss_out) + 1) * 36 + 40),
+                        )
+                else:
+                    st.info("No companies found in composite scoring for the latest year with passing groups.")
+            else:
+                st.info("No data years found for the passing groups.")
