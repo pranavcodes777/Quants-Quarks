@@ -368,7 +368,7 @@ def compute_composite_stats(sector: str, companies: tuple, yr_lo: int, yr_hi: in
         ic_vals: list[float] = []
         for yr in sorted(df_fwd_c["year"].unique()):
             yr_df = df_fwd_c[df_fwd_c["year"] == yr][[f, "Return_1Y_Fwd"]].dropna()
-            if len(yr_df) < 3 or yr_df[f].nunique() < 2:
+            if len(yr_df) < 5 or yr_df[f].nunique() < 3:
                 continue
             try:
                 r, _ = stats.spearmanr(yr_df[f], yr_df["Return_1Y_Fwd"])
@@ -397,7 +397,7 @@ def compute_composite_stats(sector: str, companies: tuple, yr_lo: int, yr_hi: in
             yr_data = df_fwd_c[df_fwd_c["year"] == yr].copy()
             need    = [f for f in usable if f in yr_data.columns] + ["Return_1Y_Fwd", "Company"]
             yr_sub  = yr_data[need].dropna(subset=["Return_1Y_Fwd"])
-            if len(yr_sub) < 3:
+            if len(yr_sub) < 5:
                 continue
 
             composite = pd.Series(0.0, index=yr_sub.index)
@@ -417,7 +417,7 @@ def compute_composite_stats(sector: str, companies: tuple, yr_lo: int, yr_hi: in
                 continue
             mask = yr_sub["Return_1Y_Fwd"].notna() & composite.notna()
             cs, rs = composite[mask], yr_sub.loc[mask, "Return_1Y_Fwd"]
-            if len(cs) < 3 or cs.nunique() < 2:
+            if len(cs) < 5 or cs.nunique() < 3:
                 continue
             try:
                 r, _ = stats.spearmanr(cs, rs)
@@ -450,7 +450,7 @@ def compute_composite_stats(sector: str, companies: tuple, yr_lo: int, yr_hi: in
             _aln    = _yr_ret[_yr_ret["Company"].isin(_co_scores)].copy()
             _aln["_sc"] = _aln["Company"].map(_co_scores)
             _aln = _aln.dropna(subset=["_sc"])
-            if len(_aln) < 3:
+            if len(_aln) < 5:
                 continue
             try:
                 _slope = float(np.polyfit(_aln["_sc"].values, _aln["Return_1Y_Fwd"].values, 1)[0])
@@ -797,7 +797,8 @@ with tab3:
     with col_ca:
         snap_co = st.selectbox("Company", sorted(df["Company"].unique()), key="snap_co")
     with col_cb:
-        snap_yr = st.selectbox("Year", sorted(df["year"].unique(), reverse=True), key="snap_yr")
+        _co_yrs = sorted(df[df["Company"] == snap_co]["year"].unique(), reverse=True)
+        snap_yr = st.selectbox("Year", _co_yrs, key="snap_yr")
 
     all_groups_snap = list(dict.fromkeys(FACTOR_META[f]["group"] for f in avail if f in FACTOR_META))
     sel_groups_snap = st.multiselect(
@@ -923,7 +924,8 @@ with tab4:
         beta_by_year = {}
         for yr in sorted(df_ic["year"].unique()):
             yr_df = df_ic[df_ic["year"] == yr][[f, "Return_1Y_Fwd"]].dropna()
-            if len(yr_df) < 3 or yr_df[f].nunique() < 2:
+            # Require ≥5 companies and ≥3 distinct factor values — below this IC/Beta are unreliable
+            if len(yr_df) < 5 or yr_df[f].nunique() < 3:
                 continue
             try:
                 corr, _ = stats.spearmanr(yr_df[f], yr_df["Return_1Y_Fwd"])
@@ -932,7 +934,23 @@ with tab4:
             except Exception:
                 pass
             try:
-                slope = float(np.polyfit(yr_df[f].values, yr_df["Return_1Y_Fwd"].values, 1)[0])
+                _fv = yr_df[f].values.astype(float)
+                _rv = yr_df["Return_1Y_Fwd"].values.astype(float)
+                # Skip if factor has no meaningful spread (e.g. Material Cost for NBFCs — mostly 0)
+                _fstd = float(np.std(_fv))
+                _fmean = float(np.mean(np.abs(_fv)))
+                if _fstd < 1e-6:
+                    continue
+                # Coefficient of variation check: skip when >90% of values are the same
+                _cv = _fstd / (_fmean + 1e-10)
+                if _cv < 0.05 and yr_df[f].nunique() < 5:
+                    continue
+                # Winsorize at 5th–95th percentile to kill single-outlier leverage on OLS
+                _lo = float(np.percentile(_fv, 5))
+                _hi = float(np.percentile(_fv, 95))
+                if _lo < _hi:
+                    _fv = np.clip(_fv, _lo, _hi)
+                slope = float(np.polyfit(_fv, _rv, 1)[0])
                 if not np.isnan(slope):
                     beta_by_year[yr] = slope
             except Exception:
@@ -1720,7 +1738,7 @@ with tab5:
             aligned = yr_ret[yr_ret["Company"].isin(yr_companies)].copy()
             aligned["style_score"] = aligned["Company"].map(yr_companies)
             aligned = aligned.dropna()
-            if len(aligned) < 3 or aligned["style_score"].nunique() < 2:
+            if len(aligned) < 5 or aligned["style_score"].nunique() < 3:
                 continue
 
             try:
