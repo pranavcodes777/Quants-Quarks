@@ -95,6 +95,14 @@ st.markdown("""
 if st.session_state.theme == "light":
     st.markdown("""
 <style>
+  /* ── Streamlit CSS variables — makes dataframe + internal components go light ── */
+  :root {
+    --background-color: #f0f4f8 !important;
+    --secondary-background-color: #ffffff !important;
+    --text-color: #0f172a !important;
+    --primary-color: #3fb950 !important;
+  }
+
   /* ── Page backgrounds ── */
   [data-testid="stApp"],
   [data-testid="stAppViewContainer"],
@@ -169,10 +177,19 @@ if st.session_state.theme == "light":
 
   /* ── Plotly chart containers ── */
   div[data-testid="stPlotlyChart"]      { background: #ffffff !important;
-                                          border: 1px solid #e2e8f0 !important;
-                                          border-radius: 10px !important;
-                                          padding: 8px !important;
-                                          box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important; }
+                                          border: 1px solid #dde3ea !important;
+                                          border-radius: 12px !important;
+                                          padding: 12px 8px 4px !important;
+                                          box-shadow: 0 2px 8px rgba(0,0,0,0.07) !important; }
+  /* Plotly modebar (toolbar top-right of chart) */
+  .modebar                              { background: transparent !important; }
+  .modebar-btn path                     { fill: #64748b !important; }
+  .modebar-btn:hover path               { fill: #0f172a !important; }
+  /* Plotly axis labels, tick labels, annotations */
+  .xtick text, .ytick text,
+  .g-gtitle text, .annotation text      { fill: #0f172a !important; font-weight: 500 !important; }
+  .xgrid line, .ygrid line              { stroke: rgba(15,23,42,0.09) !important; }
+  .zerolinelayer line                   { stroke: rgba(15,23,42,0.2) !important; }
 
   /* ── Progress / bar tracks ── */
   .p2-bar-track, .p2-mid-wrap           { background: #e2e8f0 !important; }
@@ -646,10 +663,10 @@ retained_per_group, group_comp_stats, factor_icir_map = compute_composite_stats(
 
 # Plotly defaults — theme-aware
 if st.session_state.theme == "light":
-    _PLY  = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#ffffff",
-                 font=dict(color="#374151", size=10))
-    _GRID = "rgba(0,0,0,0.07)"
-    _LINE = "rgba(0,0,0,0.15)"
+    _PLY  = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#f8fafc",
+                 font=dict(color="#0f172a", size=11))
+    _GRID = "rgba(15,23,42,0.1)"
+    _LINE = "rgba(15,23,42,0.25)"
 else:
     _PLY  = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                  font=dict(color="#888888", size=10))
