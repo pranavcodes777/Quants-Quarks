@@ -442,6 +442,24 @@ def compute_composite_stats(sector: str, companies: tuple, yr_lo: int, yr_hi: in
         except Exception:
             p_val = float("nan")
 
+        # R² (mean_ic² × 100) and Beta (OLS slope of composite vs return, averaged across years)
+        r2_pct_g = round(mic ** 2 * 100, 2)
+        _beta_by_yr: dict[int, float] = {}
+        for _yr, _co_scores in scores_by_year.items():
+            _yr_ret = df_fwd_c[df_fwd_c["year"] == _yr][["Company", "Return_1Y_Fwd"]].dropna()
+            _aln    = _yr_ret[_yr_ret["Company"].isin(_co_scores)].copy()
+            _aln["_sc"] = _aln["Company"].map(_co_scores)
+            _aln = _aln.dropna(subset=["_sc"])
+            if len(_aln) < 3:
+                continue
+            try:
+                _slope = float(np.polyfit(_aln["_sc"].values, _aln["Return_1Y_Fwd"].values, 1)[0])
+                if not np.isnan(_slope):
+                    _beta_by_yr[_yr] = _slope
+            except Exception:
+                pass
+        mean_beta_g = round(float(np.mean(list(_beta_by_yr.values()))), 4) if _beta_by_yr else float("nan")
+
         best_single_factor = max(usable, key=lambda f: abs(factor_icir_map.get(f, 0.0)), default=None)
         best_single        = abs(factor_icir_map.get(best_single_factor, 0.0)) if best_single_factor else 0.0
         # top 3 factors by |IC-IR| with labels
@@ -462,6 +480,8 @@ def compute_composite_stats(sector: str, companies: tuple, yr_lo: int, yr_hi: in
             "ic_by_year":          comp_ic_by_year,
             "scores_by_year":      scores_by_year,
             "factor_icir":         {f: round(factor_icir_map[f], 3) for f in usable},
+            "r2_pct":              r2_pct_g,
+            "mean_beta":           mean_beta_g,
         }
 
     return retained_per_group, group_comp_stats, factor_icir_map
@@ -1392,6 +1412,23 @@ with tab5:
     st.markdown('<div class="ac-hd">Section 1 — Group Composite IC (each group combined into one score)</div>',
                 unsafe_allow_html=True)
 
+    # ── Column toggles ────────────────────────────────────────────────────────
+    _t5c1, _t5c2 = st.columns([3, 2])
+    with _t5c2:
+        st.markdown('<div class="section-hd">Table Columns</div>', unsafe_allow_html=True)
+        _tt1, _tt2, _tt3 = st.columns(3)
+        with _tt1:
+            t5_show_mic   = st.checkbox("Mean IC",    value=True,  key="t5_show_mic")
+            t5_show_icir  = st.checkbox("IC-IR",      value=True,  key="t5_show_icir")
+            t5_show_r2    = st.checkbox("R² (%)",     value=True,  key="t5_show_r2")
+        with _tt2:
+            t5_show_hr    = st.checkbox("Hit Rate",   value=True,  key="t5_show_hr")
+            t5_show_pval  = st.checkbox("p-value",    value=True,  key="t5_show_pval")
+            t5_show_beta  = st.checkbox("Beta",       value=True,  key="t5_show_beta")
+        with _tt3:
+            t5_show_nyrs  = st.checkbox("N Years",    value=True,  key="t5_show_nyrs")
+            t5_show_delta = st.checkbox("Δ vs Single",value=True,  key="t5_show_delta")
+
     tbl_rows = []
     for grp, gs in sorted(group_comp_stats.items(), key=lambda x: abs(x[1]["ic_ir"]), reverse=True):
         tbl_rows.append({
@@ -1404,9 +1441,22 @@ with tab5:
             "Mean IC":            gs["mean_ic"],
             "p-value":            gs["p_val"],
             "N Years":            gs["n_years"],
+            "R² (%)":             gs.get("r2_pct", float("nan")),
+            "Beta":               gs.get("mean_beta", float("nan")),
         })
 
-    tdf = pd.DataFrame(tbl_rows).set_index("Group")
+    tdf_full = pd.DataFrame(tbl_rows).set_index("Group")
+
+    # Build the displayed column list based on toggles
+    _t5_dcols = ["Indep. Factors", "Composite IC-IR", "Best Single IC-IR"]
+    if t5_show_delta: _t5_dcols.append("Δ vs Single")
+    if t5_show_hr:    _t5_dcols.append("Hit Rate %")
+    if t5_show_mic:   _t5_dcols.append("Mean IC")
+    if t5_show_pval:  _t5_dcols.append("p-value")
+    if t5_show_nyrs:  _t5_dcols.append("N Years")
+    if t5_show_r2:    _t5_dcols.append("R² (%)")
+    if t5_show_beta:  _t5_dcols.append("Beta")
+    tdf = tdf_full[_t5_dcols]
 
     def _sc_icir(v):
         if not isinstance(v, (int, float)): return ""
@@ -1434,11 +1484,27 @@ with tab5:
         if v < 0.10: return "color:#f0b429"
         return "color:#8b949e"
 
+    def _sc_r2(v):
+        if not isinstance(v, (int, float)) or np.isnan(v): return ""
+        if v >= 10: return "color:#3fb950;font-weight:700"
+        if v >=  4: return "color:#56d364"
+        if v >=  1: return "color:#8b949e"
+        return "color:#484f58"
+
+    def _sc_beta_t5(v):
+        if not isinstance(v, (int, float)) or np.isnan(v): return ""
+        if v >  5: return "color:#3fb950;font-weight:700"
+        if v >  0: return "color:#56d364"
+        if v < -5: return "color:#f85149;font-weight:700"
+        return "color:#ff7b72"
+
     styled_tdf = (tdf.style
-                  .map(_sc_icir,  subset=["Composite IC-IR", "Best Single IC-IR"])
-                  .map(_sc_delta, subset=["Δ vs Single"])
-                  .map(_sc_mic,   subset=["Mean IC"])
-                  .map(_sc_pv,    subset=["p-value"]))
+                  .map(_sc_icir,    subset=[c for c in ["Composite IC-IR", "Best Single IC-IR"] if c in tdf.columns])
+                  .map(_sc_delta,   subset=[c for c in ["Δ vs Single"]  if c in tdf.columns])
+                  .map(_sc_mic,     subset=[c for c in ["Mean IC"]      if c in tdf.columns])
+                  .map(_sc_pv,      subset=[c for c in ["p-value"]      if c in tdf.columns])
+                  .map(_sc_r2,      subset=[c for c in ["R² (%)"]       if c in tdf.columns])
+                  .map(_sc_beta_t5, subset=[c for c in ["Beta"]         if c in tdf.columns]))
     st.dataframe(styled_tdf, use_container_width=True)
 
     # ── Composite vs best-single bar chart ────────────────────────────────────
@@ -1525,6 +1591,87 @@ with tab5:
         bargap=0.25,
     )
     st.plotly_chart(fig_cmp, use_container_width=True)
+
+    # ── R² and Beta mini charts ────────────────────────────────────────────────
+    st.markdown('<div class="ac-hd">Variance Explained (R²) and Economic Size (Beta) by Group</div>',
+                unsafe_allow_html=True)
+
+    _r2_grps   = sorted(group_comp_stats.keys(), key=lambda g: group_comp_stats[g].get("r2_pct", 0), reverse=True)
+    _beta_grps = sorted(
+        [g for g in group_comp_stats if not (isinstance(group_comp_stats[g].get("mean_beta"), float)
+                                              and np.isnan(group_comp_stats[g]["mean_beta"]))],
+        key=lambda g: abs(group_comp_stats[g].get("mean_beta", 0)), reverse=True
+    )
+
+    _ch1, _ch2 = st.columns(2)
+
+    with _ch1:
+        _r2_vals   = [group_comp_stats[g]["r2_pct"]   for g in _r2_grps]
+        _r2_colors = [
+            "#3fb950" if v >= 10 else ("#56d364" if v >= 4 else ("#f0b429" if v >= 1 else "#484f58"))
+            for v in _r2_vals
+        ]
+        fig_r2 = go.Figure(go.Bar(
+            x=_r2_vals, y=_r2_grps,
+            orientation="h",
+            marker_color=_r2_colors,
+            text=[f"{v:.1f}%" for v in _r2_vals],
+            textposition="outside",
+            textfont=dict(size=9, color="#aaaaaa"),
+            hovertemplate="<b>%{y}</b><br>R² = %{x:.2f}%<br>"
+                          "<span style='color:#aaa;font-size:10px'>% of return variance the composite explains on average</span>"
+                          "<extra></extra>",
+            cliponaxis=False,
+        ))
+        fig_r2.add_vline(x=4,  line_color="rgba(86,211,100,0.3)", line_dash="dot", line_width=1)
+        fig_r2.add_vline(x=10, line_color="rgba(63,185,80,0.5)",  line_dash="dot", line_width=1,
+                         annotation_text="10% = strong", annotation_position="top right",
+                         annotation_font=dict(color="rgba(63,185,80,0.5)", size=8))
+        fig_r2.update_layout(**_PLY,
+            title=dict(text="R² (%) — Return Variance Explained", font=dict(size=12)),
+            height=max(260, len(_r2_grps) * 28 + 60),
+            margin=dict(l=0, r=60, t=40, b=10),
+            xaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False, ticksuffix="%"),
+            yaxis=dict(autorange="reversed", showgrid=False, tickfont=dict(size=10)),
+        )
+        st.plotly_chart(fig_r2, use_container_width=True)
+        st.caption(
+            "R² = Mean IC² × 100. Measures what fraction of next-year return variance "
+            "the composite factor score explains on average. ≥10% = strong, 4–10% = meaningful, <1% = negligible."
+        )
+
+    with _ch2:
+        _beta_vals   = [group_comp_stats[g].get("mean_beta", float("nan")) for g in _beta_grps]
+        _beta_colors = [
+            "#3fb950" if v > 5 else ("#56d364" if v > 0 else ("#f85149" if v < -5 else "#ff7b72"))
+            for v in _beta_vals
+        ]
+        fig_beta = go.Figure(go.Bar(
+            x=_beta_vals, y=_beta_grps,
+            orientation="h",
+            marker_color=_beta_colors,
+            text=[f"{v:+.2f}" for v in _beta_vals],
+            textposition="outside",
+            textfont=dict(size=9, color="#aaaaaa"),
+            hovertemplate="<b>%{y}</b><br>Beta = %{x:+.3f}%/unit<br>"
+                          "<span style='color:#aaa;font-size:10px'>Avg return shift per 1-unit move in composite score</span>"
+                          "<extra></extra>",
+            cliponaxis=False,
+        ))
+        fig_beta.add_vline(x=0, line_color=_LINE, line_dash="dot", line_width=1)
+        fig_beta.update_layout(**_PLY,
+            title=dict(text="Beta — Economic Size of Composite", font=dict(size=12)),
+            height=max(260, len(_beta_grps) * 28 + 60),
+            margin=dict(l=0, r=70, t=40, b=10),
+            xaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False, ticksuffix="%"),
+            yaxis=dict(autorange="reversed", showgrid=False, tickfont=dict(size=10)),
+        )
+        st.plotly_chart(fig_beta, use_container_width=True)
+        st.caption(
+            "Beta = average OLS slope of (composite score → next-year return) across years. "
+            "A Beta of +5 means a 1-unit higher composite score is associated with +5% more return. "
+            "Positive = factor scores in the right direction."
+        )
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     st.divider()
