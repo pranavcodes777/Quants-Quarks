@@ -179,12 +179,9 @@ if st.session_state.theme == "light":
   div[data-testid="stPlotlyChart"]      { background: #ffffff !important;
                                           border: 1px solid #dde3ea !important;
                                           border-radius: 12px !important;
-                                          padding: 12px 8px 8px !important;
+                                          padding: 12px 8px 12px !important;
                                           box-shadow: 0 2px 8px rgba(0,0,0,0.07) !important;
-                                          overflow: visible !important; }
-  /* Let SVG labels overflow past chart boundary so they're never clipped */
-  .js-plotly-plot .main-svg,
-  .js-plotly-plot .svg-container        { overflow: visible !important; }
+                                          overflow: hidden !important; }
 
   /* Force ALL plotly SVG text dark */
   .js-plotly-plot text                  { fill: #0f172a !important; }
@@ -1410,7 +1407,7 @@ with tab4:
                 tickformat=".2f", range=[min(-0.05, yy_df["IC"].min() * 1.35),
                                           max(0.05,  yy_df["IC"].max() * 1.35)],
             ),
-            margin=dict(l=10, r=10, t=50, b=10),
+            margin=dict(l=10, r=10, t=50, b=55),
         )
         st.plotly_chart(fig_yy, use_container_width=True)
 
@@ -1508,7 +1505,7 @@ with tab4:
                 font=dict(size=9), itemsizing="constant",
                 bgcolor="rgba(0,0,0,0)", borderwidth=0,
             ),
-            margin=dict(l=10, r=110, t=50, b=10),
+            margin=dict(l=10, r=110, t=50, b=55),
         )
         st.plotly_chart(fig_sc, use_container_width=True)
 
@@ -1824,7 +1821,7 @@ with tab5:
         fig_r2.update_layout(**_PLY,
             title=dict(text="R² (%) — Return Variance Explained", font=dict(size=12)),
             height=max(260, len(_r2_grps) * 28 + 60),
-            margin=dict(l=0, r=60, t=40, b=10),
+            margin=dict(l=0, r=60, t=40, b=55),
             xaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False, ticksuffix="%"),
             yaxis=dict(autorange="reversed", showgrid=False, tickfont=dict(size=10)),
         )
@@ -1856,7 +1853,7 @@ with tab5:
         fig_beta.update_layout(**_PLY,
             title=dict(text="Beta — Economic Size of Composite", font=dict(size=12)),
             height=max(260, len(_beta_grps) * 28 + 60),
-            margin=dict(l=0, r=70, t=40, b=10),
+            margin=dict(l=0, r=70, t=40, b=55),
             xaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False, ticksuffix="%"),
             yaxis=dict(autorange="reversed", showgrid=False, tickfont=dict(size=10)),
         )
@@ -2102,7 +2099,7 @@ with tab5:
                     font=dict(size=12),
                 ),
                 height=max(300, len(lb_df) * 34 + 80),
-                margin=dict(l=0, r=80, t=45, b=10),
+                margin=dict(l=0, r=80, t=45, b=55),
                 yaxis=dict(autorange="reversed", showgrid=False, tickfont=dict(size=10)),
                 xaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False),
                 hoverlabel=dict(bgcolor="#1c2128", font_size=11, font_family="monospace"),
@@ -2289,7 +2286,7 @@ with tab6:
     ))
     _qmax = max(abs(max(_qv)), abs(min(_qv)), 5) * 1.4
     fig_q1.update_layout(**_PLY,
-        height=400, margin=dict(l=10, r=10, t=20, b=10),
+        height=400, margin=dict(l=10, r=10, t=20, b=55),
         xaxis=dict(showgrid=False, tickfont=dict(size=12)),
         yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False,
                    ticksuffix="%", range=[-_qmax, _qmax]),
@@ -2347,7 +2344,7 @@ with tab6:
                      annotation_font=dict(color="#f0b429", size=10),
                      annotation_position="top right")
     fig_q2.update_layout(**_PLY,
-        height=340, margin=dict(l=10, r=10, t=20, b=10),
+        height=340, margin=dict(l=10, r=10, t=20, b=55),
         xaxis=dict(type="category", showgrid=False, tickfont=dict(size=11)),
         yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False, ticksuffix="%"),
         bargap=0.25,
@@ -2399,7 +2396,7 @@ with tab6:
                      annotation_text="₹100 start", annotation_position="top left",
                      annotation_font=dict(color="#666", size=9))
     fig_q3.update_layout(**_PLY,
-        height=420, margin=dict(l=10, r=10, t=20, b=10),
+        height=420, margin=dict(l=10, r=10, t=20, b=55),
         xaxis=dict(type="category", showgrid=False, tickfont=dict(size=11)),
         yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False,
                    tickprefix="₹", tickformat=".0f"),
