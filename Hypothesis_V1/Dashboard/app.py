@@ -5,6 +5,7 @@ Phase 1: Factor Correlation
 
 import os
 import sys
+import colorsys
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -361,7 +362,6 @@ def compute_composite_stats(sector: str, companies: tuple, yr_lo: int, yr_hi: in
     # 2. IC-IR for every retained factor (year-by-year Spearman)
     all_retained   = [f for fs in retained_per_group.values() for f in fs]
     factor_icir_map: dict[str, float] = {}
-    factor_mic_map:  dict[str, float] = {}
     for f in all_retained:
         if f not in df_fwd_c.columns:
             continue
@@ -380,7 +380,6 @@ def compute_composite_stats(sector: str, companies: tuple, yr_lo: int, yr_hi: in
             mic = float(np.mean(ic_vals))
             sic = float(np.std(ic_vals, ddof=1))
             factor_icir_map[f] = mic / sic if sic > 0 else 0.0
-            factor_mic_map[f]  = mic
 
     # 3. Build group composite scores + test IC
     group_comp_stats: dict[str, dict] = {}
@@ -442,8 +441,9 @@ def compute_composite_stats(sector: str, companies: tuple, yr_lo: int, yr_hi: in
         except Exception:
             p_val = float("nan")
 
-        # R² (mean_ic² × 100) and Beta (OLS slope of composite vs return, averaged across years)
-        r2_pct_g = round(mic ** 2 * 100, 2)
+        # R² = mean(IC²) × 100 — average fraction of return variance explained per year.
+        # NOT mean(IC)² which collapses to near-zero when IC alternates sign year to year.
+        r2_pct_g = round(float(np.mean([v ** 2 for v in ic_vals])) * 100, 2)
         _beta_by_yr: dict[int, float] = {}
         for _yr, _co_scores in scores_by_year.items():
             _yr_ret = df_fwd_c[df_fwd_c["year"] == _yr][["Company", "Return_1Y_Fwd"]].dropna()
@@ -966,7 +966,8 @@ with tab4:
         ic_ir     = mean_ic / std_ic if std_ic > 0 else 0.0
         hit_rate  = sum(1 for v in ic_vals if v > 0) / n_years * 100
         t_stat    = mean_ic / (std_ic / np.sqrt(n_years)) if std_ic > 0 else np.nan
-        r2_pct    = round(mean_ic ** 2 * 100, 2)
+        # R² = mean(IC²) × 100 — average R² per year, not (mean IC)² which collapses for alternating-sign IC
+        r2_pct    = round(float(np.mean([v ** 2 for v in ic_vals])) * 100, 2)
         mean_beta = round(float(np.mean(list(beta_by_year.values()))), 4) if beta_by_year else np.nan
         try:
             p_val = float(2 * stats.t.sf(abs(t_stat), df=n_years - 1))
@@ -1243,8 +1244,15 @@ with tab4:
     scat = df_ic[[sel_key, "Return_1Y_Fwd", "Company", "year"]].dropna().copy()
     if len(scat) >= 5:
         try:
-            _sl, _ic_v, _, _, _ = _linregress(scat[sel_key].values, scat["Return_1Y_Fwd"].values)
-            xlo, xhi = scat[sel_key].min(), scat[sel_key].max()
+            _fv_sc = scat[sel_key].values.astype(float)
+            _rv_sc = scat["Return_1Y_Fwd"].values.astype(float)
+            # Winsorize pooled factor at 2nd–98th percentile before OLS to prevent
+            # a single multi-year outlier from dominating the trend line
+            _p2, _p98 = float(np.percentile(_fv_sc, 2)), float(np.percentile(_fv_sc, 98))
+            if _p2 < _p98:
+                _fv_sc = np.clip(_fv_sc, _p2, _p98)
+            _sl, _ic_v, _, _, _ = _linregress(_fv_sc, _rv_sc)
+            xlo, xhi = scat[sel_key].min(), scat[sel_key].max()  # draw across full visual range
             ols_ok = True
         except Exception:
             ols_ok = False
@@ -1253,7 +1261,6 @@ with tab4:
         years_sorted = sorted(scat["year"].unique())
         yr_idx       = {yr: i for i, yr in enumerate(years_sorted)}
         n_yrs        = max(len(years_sorted) - 1, 1)
-        import colorsys
         def _yr_color(yr):
             t   = yr_idx[yr] / n_yrs
             r, g, b = colorsys.hsv_to_rgb(0.67 - 0.55 * t, 0.75, 0.90)
@@ -1727,7 +1734,7 @@ with tab5:
                     yr_companies[co] = yr_companies.get(co, 0.0) + sign * w * sc
                 total_weight += w
 
-            if total_weight < 1e-9 or len(yr_companies) < 3:
+            if total_weight < 1e-9 or len(yr_companies) < 5:
                 continue
 
             # Normalize by total weight
