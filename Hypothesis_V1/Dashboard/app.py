@@ -559,7 +559,7 @@ st.markdown(f"""
 
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["  Correlation Matrix  ", "  Factor Explorer  ", "  Company Snapshot  ", "  Factor Predictability  ", "  Alpha Composite  "])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["  Correlation Matrix  ", "  Factor Explorer  ", "  Company Snapshot  ", "  Factor Predictability  ", "  Alpha Composite  ", "  Quintile Backtest  "])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1917,3 +1917,395 @@ with tab5:
                 f"only independent signals (after within-group deduplication) contribute. "
                 f"Hover a bar to see each group's contribution."
             )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 6 — Quintile Backtest
+# ══════════════════════════════════════════════════════════════════════════════
+with tab6:
+
+    if not group_comp_stats:
+        st.warning("Not enough data. Expand year range or select more companies.")
+        st.stop()
+
+    st.markdown("""
+    <div class="ac-card">
+      <p><b>What this does:</b> Every year, every company gets a style score based on the groups you select.
+         Companies are split into 5 equal buckets — Q1 = top 20% (best-scored), Q5 = bottom 20% (worst-scored).
+         Then we look at what actually happened to their returns. No predictions. Pure historical evidence.</p>
+      <p><b>The conclusion:</b> if Q1 consistently beats Q5, the scoring system has a real edge and the top bucket is where you want to be.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    # ── Group selector ─────────────────────────────────────────────────────────
+    st.markdown('<div class="ac-hd">Select Groups for the Style Composite</div>', unsafe_allow_html=True)
+
+    _avail_t6 = list(group_comp_stats.keys())
+    # Smart default: top groups that are statistically significant and positively signed
+    _default_t6 = [
+        g for g in sorted(_avail_t6,
+                           key=lambda g: abs(group_comp_stats[g]["ic_ir"]), reverse=True)
+        if group_comp_stats[g]["p_val"] < 0.10 and group_comp_stats[g]["ic_ir"] > 0
+    ][:5]
+    if not _default_t6:
+        _default_t6 = _avail_t6[:3]
+
+    sel_t6 = st.multiselect(
+        "t6_grp_label",
+        _avail_t6,
+        default=_default_t6,
+        key="t6_groups",
+        label_visibility="collapsed",
+        format_func=lambda g: (
+            f"{g}   ·   IC-IR {group_comp_stats[g]['ic_ir']:+.2f}"
+            f"   ·   p={group_comp_stats[g]['p_val']:.3f}"
+            f"   ·   Hit {group_comp_stats[g]['hit_rate']:.0f}%"
+        ),
+    )
+    if len(sel_t6) < 1:
+        st.info("Select at least one group above.")
+        st.stop()
+
+    st.divider()
+
+    # ── Build style scores year-by-year ────────────────────────────────────────
+    _qt_scores: dict[int, dict] = {}
+    for _yr in sorted(set(y for g in sel_t6 for y in group_comp_stats[g]["scores_by_year"])):
+        _co_sc: dict[str, float] = {}
+        _tw = 0.0
+        for _g in sel_t6:
+            if _yr not in group_comp_stats[_g]["scores_by_year"]:
+                continue
+            _w    = abs(group_comp_stats[_g]["ic_ir"])
+            _sign = 1.0 if group_comp_stats[_g]["mean_ic"] >= 0 else -1.0
+            for _co, _sc in group_comp_stats[_g]["scores_by_year"][_yr].items():
+                _co_sc[_co] = _co_sc.get(_co, 0.0) + _sign * _w * _sc
+            _tw += _w
+        if _tw > 1e-9 and len(_co_sc) >= 5:
+            _qt_scores[_yr] = {c: v / _tw for c, v in _co_sc.items()}
+
+    if not _qt_scores:
+        st.warning("Not enough overlapping data across selected groups.")
+        st.stop()
+
+    # ── Compute quintile returns ────────────────────────────────────────────────
+    _qt_rows:    list[dict] = []
+    _spread_yr:  dict[int, float] = {}
+    _ew_yr:      dict[int, float] = {}
+    _q1_cos_yr:  dict[int, list]  = {}
+
+    for _yr, _scores in _qt_scores.items():
+        _ret = df_fwd[df_fwd["year"] == _yr][["Company", "Return_1Y_Fwd"]].dropna()
+        _aln = _ret[_ret["Company"].isin(_scores)].copy()
+        _aln["score"] = _aln["Company"].map(_scores)
+        _aln = _aln.dropna(subset=["score"])
+        if len(_aln) < 5:
+            continue
+
+        _ew_yr[_yr] = _aln["Return_1Y_Fwd"].mean()
+
+        try:
+            _aln["Q"] = pd.qcut(_aln["score"].rank(method="first"), 5,
+                                 labels=["Q5", "Q4", "Q3", "Q2", "Q1"])
+        except Exception:
+            continue
+
+        _yr_q: dict[str, float] = {}
+        for _q in ["Q1", "Q2", "Q3", "Q4", "Q5"]:
+            _sub = _aln[_aln["Q"] == _q]
+            if _sub.empty:
+                continue
+            _avg = _sub["Return_1Y_Fwd"].mean()
+            _yr_q[_q] = _avg
+            _qt_rows.append({"year": _yr, "Quintile": _q,
+                             "AvgReturn": _avg, "N": len(_sub),
+                             "Companies": list(_sub["Company"])})
+            if _q == "Q1":
+                _q1_cos_yr[_yr] = list(_sub.sort_values("score", ascending=False)["Company"])
+
+        if "Q1" in _yr_q and "Q5" in _yr_q:
+            _spread_yr[_yr] = _yr_q["Q1"] - _yr_q["Q5"]
+
+    if not _qt_rows or not _spread_yr:
+        st.warning("Not enough data for quintile analysis. Try expanding the year range.")
+        st.stop()
+
+    _qt_df  = pd.DataFrame(_qt_rows)
+    _qt_avg = (_qt_df.groupby("Quintile")["AvgReturn"]
+               .agg(Mean="mean", Std="std", Count="count")
+               .reindex(["Q1","Q2","Q3","Q4","Q5"])
+               .round(2))
+
+    _q1_avg      = _qt_avg.loc["Q1", "Mean"]
+    _q5_avg      = _qt_avg.loc["Q5", "Mean"]
+    _spread_avg  = _q1_avg - _q5_avg
+    _n_yrs_t6    = len(_spread_yr)
+    _win_rate    = sum(1 for v in _spread_yr.values() if v > 0) / _n_yrs_t6 * 100
+    _sp_vals     = list(_spread_yr.values())
+    _sp_icir     = (float(np.mean(_sp_vals)) / float(np.std(_sp_vals, ddof=1))
+                    if len(_sp_vals) >= 2 and np.std(_sp_vals, ddof=1) > 0 else 0.0)
+    _ew_avg      = float(np.mean(list(_ew_yr.values()))) if _ew_yr else 0.0
+
+    # ── KPI strip ─────────────────────────────────────────────────────────────
+    _k1, _k2, _k3, _k4, _k5, _k6 = st.columns(6)
+    _k1.metric("Q1 Avg Return",  f"{_q1_avg:+.1f}%",
+               delta=f"{_q1_avg - _ew_avg:+.1f}% vs sector avg")
+    _k2.metric("Q5 Avg Return",  f"{_q5_avg:+.1f}%",
+               delta=f"{_q5_avg - _ew_avg:+.1f}% vs sector avg", delta_color="inverse")
+    _k3.metric("Q1 − Q5 Spread", f"{_spread_avg:+.1f}%/yr")
+    _k4.metric("Win Rate",       f"{_win_rate:.0f}%",
+               help="% of years Q1 beat Q5")
+    _k5.metric("Spread IC-IR",   f"{_sp_icir:+.2f}",
+               help="Mean spread / Std spread — consistency of the alpha")
+    _k6.metric("Years Tested",   _n_yrs_t6)
+
+    st.divider()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # CHART 1 — Average return by quintile
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown('<div class="ac-hd">Chart 1 — Average Annual Return by Quintile</div>',
+                unsafe_allow_html=True)
+
+    _qc = {"Q1":"#3fb950","Q2":"#56d364","Q3":"#f0b429","Q4":"#ff7b72","Q5":"#f85149"}
+    _ql = ["Q1 — Top 20%","Q2","Q3 — Middle","Q4","Q5 — Bottom 20%"]
+    _qk = ["Q1","Q2","Q3","Q4","Q5"]
+    _qv = [_qt_avg.loc[q, "Mean"] for q in _qk]
+
+    fig_q1 = go.Figure()
+    fig_q1.add_hline(y=_ew_avg, line_dash="dot", line_color="#f0b429", line_width=1.5,
+                     annotation_text=f"Sector avg {_ew_avg:+.1f}%",
+                     annotation_font=dict(color="#f0b429", size=10),
+                     annotation_position="top right")
+    fig_q1.add_hline(y=0, line_color=_LINE, line_dash="dot", line_width=1)
+    fig_q1.add_trace(go.Bar(
+        x=_ql, y=_qv,
+        marker_color=[_qc[q] for q in _qk],
+        text=[f"{v:+.1f}%" for v in _qv],
+        textposition="outside", textfont=dict(size=14, color="#cccccc"),
+        hovertemplate="<b>%{x}</b><br>Avg Return: <b>%{y:+.2f}%</b><extra></extra>",
+        cliponaxis=False, width=0.5,
+    ))
+    _qmax = max(abs(max(_qv)), abs(min(_qv)), 5) * 1.4
+    fig_q1.update_layout(**_PLY,
+        height=400, margin=dict(l=10, r=10, t=20, b=10),
+        xaxis=dict(showgrid=False, tickfont=dict(size=12)),
+        yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False,
+                   ticksuffix="%", range=[-_qmax, _qmax]),
+        bargap=0.35,
+    )
+    st.plotly_chart(fig_q1, use_container_width=True)
+    st.caption(
+        f"Each bar = average across {_n_yrs_t6} independent years. "
+        f"A clean staircase from Q1 down to Q5 is the proof the scoring system works. "
+        f"Yellow line = equal-weight sector average."
+    )
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # CHART 2 — Year-by-year Q1 vs Q5 spread
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown('<div class="ac-hd">Chart 2 — Q1 − Q5 Spread by Year (consistency check)</div>',
+                unsafe_allow_html=True)
+
+    _sp_df_rows = []
+    for _y, _sp in sorted(_spread_yr.items()):
+        _q1r = _qt_df[(_qt_df["year"]==_y)&(_qt_df["Quintile"]=="Q1")]["AvgReturn"]
+        _q5r = _qt_df[(_qt_df["year"]==_y)&(_qt_df["Quintile"]=="Q5")]["AvgReturn"]
+        _sp_df_rows.append({
+            "Year": str(int(_y)), "Spread": round(_sp, 1),
+            "Q1": round(_q1r.values[0], 1) if len(_q1r) else 0,
+            "Q5": round(_q5r.values[0], 1) if len(_q5r) else 0,
+        })
+    _sp_df = pd.DataFrame(_sp_df_rows)
+
+    fig_q2 = go.Figure()
+    _sp_mean_v = float(np.mean(_sp_df["Spread"]))
+    _sp_std_v  = float(np.std(_sp_df["Spread"]))
+    if _sp_std_v > 0:
+        fig_q2.add_hrect(y0=_sp_mean_v - _sp_std_v, y1=_sp_mean_v + _sp_std_v,
+                         fillcolor="rgba(240,180,41,0.06)", line_width=0,
+                         annotation_text="±1σ band", annotation_position="top left",
+                         annotation_font=dict(color="rgba(240,180,41,0.4)", size=9))
+    fig_q2.add_trace(go.Bar(
+        x=_sp_df["Year"], y=_sp_df["Spread"],
+        marker_color=["#3fb950" if v >= 0 else "#f85149" for v in _sp_df["Spread"]],
+        text=[f"{v:+.1f}%" for v in _sp_df["Spread"]],
+        textposition="outside", textfont=dict(size=9, color="#aaaaaa"),
+        customdata=np.column_stack([_sp_df["Q1"], _sp_df["Q5"]]),
+        hovertemplate=(
+            "<b>FY%{x}</b><br>"
+            "Spread: <b>%{y:+.1f}%</b><br>"
+            "Q1 avg: %{customdata[0]:+.1f}%<br>"
+            "Q5 avg: %{customdata[1]:+.1f}%<extra></extra>"
+        ),
+        cliponaxis=False,
+    ))
+    fig_q2.add_hline(y=0,           line_color=_LINE,     line_dash="dot",   line_width=1)
+    fig_q2.add_hline(y=_sp_mean_v,  line_color="#f0b429", line_dash="solid", line_width=1.5,
+                     annotation_text=f"Avg {_sp_mean_v:+.1f}%",
+                     annotation_font=dict(color="#f0b429", size=10),
+                     annotation_position="top right")
+    fig_q2.update_layout(**_PLY,
+        height=340, margin=dict(l=10, r=10, t=20, b=10),
+        xaxis=dict(type="category", showgrid=False, tickfont=dict(size=11)),
+        yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False, ticksuffix="%"),
+        bargap=0.25,
+    )
+    st.plotly_chart(fig_q2, use_container_width=True)
+    st.caption(
+        f"Green = Q1 beat Q5 that year. Red = it didn't. "
+        f"Win rate: {_win_rate:.0f}% of {_n_yrs_t6} years. "
+        f"Spread IC-IR {_sp_icir:+.2f} — the Sharpe ratio of the alpha."
+    )
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # CHART 3 — Cumulative wealth
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown('<div class="ac-hd">Chart 3 — Cumulative Wealth · ₹100 at start</div>',
+                unsafe_allow_html=True)
+
+    _sorted_yrs = sorted(_spread_yr.keys())
+    _c_q1 = [100.0]; _c_q5 = [100.0]; _c_ew = [100.0]
+    for _y in _sorted_yrs:
+        _r1 = _qt_df[(_qt_df["year"]==_y)&(_qt_df["Quintile"]=="Q1")]["AvgReturn"]
+        _r5 = _qt_df[(_qt_df["year"]==_y)&(_qt_df["Quintile"]=="Q5")]["AvgReturn"]
+        _c_q1.append(_c_q1[-1] * (1 + (_r1.values[0] if len(_r1) else 0) / 100))
+        _c_q5.append(_c_q5[-1] * (1 + (_r5.values[0] if len(_r5) else 0) / 100))
+        _c_ew.append(_c_ew[-1] * (1 + _ew_yr.get(_y, 0) / 100))
+
+    _x_cum = ["Start"] + [str(int(y)) for y in _sorted_yrs]
+
+    fig_q3 = go.Figure()
+    fig_q3.add_trace(go.Scatter(
+        x=_x_cum, y=_c_q1, mode="lines+markers", name="Q1 — Top 20%",
+        line=dict(color="#3fb950", width=3),
+        marker=dict(size=6, color="#3fb950"),
+        hovertemplate="FY%{x}  Q1: ₹<b>%{y:.0f}</b><extra></extra>",
+    ))
+    fig_q3.add_trace(go.Scatter(
+        x=_x_cum, y=_c_ew, mode="lines+markers", name="Sector Equal-Weight",
+        line=dict(color="#f0b429", width=1.5, dash="dot"),
+        marker=dict(size=5, color="#f0b429"),
+        hovertemplate="FY%{x}  EW: ₹<b>%{y:.0f}</b><extra></extra>",
+    ))
+    fig_q3.add_trace(go.Scatter(
+        x=_x_cum, y=_c_q5, mode="lines+markers", name="Q5 — Bottom 20%",
+        line=dict(color="#f85149", width=3),
+        marker=dict(size=6, color="#f85149"),
+        hovertemplate="FY%{x}  Q5: ₹<b>%{y:.0f}</b><extra></extra>",
+    ))
+    fig_q3.add_hline(y=100, line_color=_LINE, line_dash="dot", line_width=1,
+                     annotation_text="₹100 start", annotation_position="top left",
+                     annotation_font=dict(color="#666", size=9))
+    fig_q3.update_layout(**_PLY,
+        height=420, margin=dict(l=10, r=10, t=20, b=10),
+        xaxis=dict(type="category", showgrid=False, tickfont=dict(size=11)),
+        yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False,
+                   tickprefix="₹", tickformat=".0f"),
+        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=11),
+                    orientation="h", x=0.01, y=1.06),
+        hovermode="x unified",
+    )
+    st.plotly_chart(fig_q3, use_container_width=True)
+    st.caption(
+        f"Hypothetical annual rebalance — no transaction costs. "
+        f"Q1 → ₹{_c_q1[-1]:.0f}  ·  Equal-weight → ₹{_c_ew[-1]:.0f}  ·  Q5 → ₹{_c_q5[-1]:.0f}. "
+        f"The gap between Q1 and Q5 is the total edge of this scoring system over the period."
+    )
+
+    st.divider()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # VERDICT + THE ANSWER
+    # ══════════════════════════════════════════════════════════════════════════
+    if   _spread_avg > 20 and _win_rate >= 70 and _sp_icir > 1.0:
+        _vl, _vbg, _vb, _vt = "STRONG EDGE",   "#1a4731", "#3fb950", "#3fb950"
+        _vd = (f"Q1 beat Q5 by <b>{_spread_avg:+.1f}%/yr</b> on average, winning "
+               f"<b>{_win_rate:.0f}%</b> of years with a Spread IC-IR of <b>{_sp_icir:+.2f}</b>. "
+               "This scoring system has a statistically reliable edge in this sector. "
+               "The top-quintile companies below are the data-backed recommendation.")
+    elif _spread_avg > 8 and _win_rate >= 60:
+        _vl, _vbg, _vb, _vt = "SOLID EDGE",    "#1a3a20", "#56d364", "#56d364"
+        _vd = (f"Q1 beat Q5 by <b>{_spread_avg:+.1f}%/yr</b>, winning <b>{_win_rate:.0f}%</b> of years. "
+               "Signal is meaningful but not dominant — use alongside other conviction signals. "
+               "Top-quintile below has a higher historical base rate than the rest of the sector.")
+    elif _spread_avg > 0 and _win_rate >= 50:
+        _vl, _vbg, _vb, _vt = "WEAK EDGE",     "#2d2510", "#f0b429", "#f0b429"
+        _vd = (f"The signal direction is right ({_spread_avg:+.1f}%/yr spread) but inconsistent "
+               f"(only {_win_rate:.0f}% win rate). "
+               "Add more groups, tighten IC-IR filters, or use a broader universe before acting on this.")
+    else:
+        _vl, _vbg, _vb, _vt = "NO EDGE",       "#3d1f1f", "#f85149", "#f85149"
+        _vd = ("Q1 did not reliably beat Q5 in this sector with this group combination. "
+               "The scoring system does not have a historical edge here. "
+               "Try different groups or a different sector.")
+
+    st.markdown(f"""
+    <div style="border:1px solid {_vb};background:{_vbg};border-radius:8px;padding:18px 22px;margin-bottom:20px;">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;">
+        <div style="padding:5px 16px;border-radius:4px;border:1px solid {_vb};
+                    font-size:0.75rem;font-weight:700;letter-spacing:.14em;color:{_vt};">{_vl}</div>
+        <div style="font-size:0.88rem;color:#ccc;">
+          Spread <b style="color:{_vt};">{_spread_avg:+.1f}%/yr</b> &nbsp;·&nbsp;
+          Win Rate <b style="color:{_vt};">{_win_rate:.0f}%</b> &nbsp;·&nbsp;
+          Spread IC-IR <b style="color:{_vt};">{_sp_icir:+.2f}</b> &nbsp;·&nbsp;
+          {_n_yrs_t6} years tested
+        </div>
+      </div>
+      <div style="font-size:0.82rem;color:#aaa;line-height:1.7;">{_vd}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── THE ANSWER: ranked company table ─────────────────────────────────────
+    _ans_yr = max(_qt_scores.keys())
+    st.markdown(
+        f'<div class="ac-hd">The Answer — FY{int(_ans_yr)} Rankings  '
+        f'(most recent year with validated return data)</div>',
+        unsafe_allow_html=True
+    )
+
+    _ans_scores = _qt_scores[_ans_yr]
+    _ans_df = pd.DataFrame([{"Company": c, "Score": round(s, 4)}
+                             for c, s in _ans_scores.items()])
+    _ans_df = _ans_df.sort_values("Score", ascending=False).reset_index(drop=True)
+    _n_ans   = len(_ans_df)
+    _q1_n    = max(1, _n_ans // 5)
+    _q5_n    = max(1, _n_ans // 5)
+
+    def _assign_label(i):
+        if i < _q1_n:              return "Q1 — BUY"
+        if i < _q1_n * 2:          return "Q2"
+        if i < _n_ans - _q5_n * 2: return "Q3"
+        if i < _n_ans - _q5_n:     return "Q4"
+        return                             "Q5 — AVOID"
+
+    _ans_df["Signal"] = [_assign_label(i) for i in range(_n_ans)]
+
+    for _g in sel_t6:
+        _g_sc = group_comp_stats[_g]["scores_by_year"].get(_ans_yr, {})
+        _ans_df[_g[:18]] = _ans_df["Company"].map(_g_sc).round(3)
+
+    _ans_df.index = range(1, len(_ans_df) + 1)
+    _ans_df.index.name = "Rank"
+
+    def _sc_sig(v):
+        if v == "Q1 — BUY":   return "background-color:#0d2818;color:#3fb950;font-weight:700"
+        if v == "Q5 — AVOID": return "background-color:#2a0d0d;color:#f85149;font-weight:700"
+        if v == "Q2":          return "color:#56d364"
+        if v == "Q4":          return "color:#ff7b72"
+        return "color:#8b949e"
+
+    st.dataframe(
+        _ans_df.style.map(_sc_sig, subset=["Signal"]),
+        use_container_width=True,
+        height=min(680, (_n_ans + 1) * 36 + 40),
+    )
+
+    st.caption(
+        f"FY{int(_ans_yr)} fundamentals, groups: {', '.join(sel_t6)}. "
+        f"Q1 = top {_q1_n} companies ({100//5}% of {_n_ans} in sector). "
+        f"Score = IC-IR-weighted composite. Higher = historically better return predictor. "
+        f"This is a statistical ranking — not investment advice. Apply your own due diligence."
+    )
