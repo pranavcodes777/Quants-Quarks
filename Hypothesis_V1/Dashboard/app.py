@@ -179,16 +179,19 @@ if st.session_state.theme == "light":
   div[data-testid="stPlotlyChart"]      { background: #ffffff !important;
                                           border: 1px solid #dde3ea !important;
                                           border-radius: 12px !important;
-                                          padding: 12px 8px 4px !important;
+                                          padding: 12px 8px 20px !important;
                                           box-shadow: 0 2px 8px rgba(0,0,0,0.07) !important; }
-  /* Plotly modebar (toolbar top-right of chart) */
+  /* Force ALL plotly SVG text dark — overrides hardcoded inline colors */
+  .js-plotly-plot text                  { fill: #0f172a !important; }
+  .js-plotly-plot .xtick text,
+  .js-plotly-plot .ytick text           { fill: #334155 !important; font-size: 11px !important; }
+  .js-plotly-plot .annotation-text      { fill: #0f172a !important; }
+  /* Plotly modebar */
   .modebar                              { background: transparent !important; }
   .modebar-btn path                     { fill: #64748b !important; }
   .modebar-btn:hover path               { fill: #0f172a !important; }
-  /* Plotly axis labels, tick labels, annotations */
-  .xtick text, .ytick text,
-  .g-gtitle text, .annotation text      { fill: #0f172a !important; font-weight: 500 !important; }
-  .xgrid line, .ygrid line              { stroke: rgba(15,23,42,0.09) !important; }
+  /* Grid lines */
+  .xgrid line, .ygrid line              { stroke: rgba(15,23,42,0.08) !important; }
   .zerolinelayer line                   { stroke: rgba(15,23,42,0.2) !important; }
 
   /* ── Progress / bar tracks ── */
@@ -663,15 +666,31 @@ retained_per_group, group_comp_stats, factor_icir_map = compute_composite_stats(
 
 # Plotly defaults — theme-aware
 if st.session_state.theme == "light":
-    _PLY  = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#f8fafc",
-                 font=dict(color="#0f172a", size=11))
-    _GRID = "rgba(15,23,42,0.1)"
-    _LINE = "rgba(15,23,42,0.25)"
+    _PLY       = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#f8fafc",
+                      font=dict(color="#0f172a", size=11))
+    _GRID      = "rgba(15,23,42,0.1)"
+    _LINE      = "rgba(15,23,42,0.25)"
+    _ANNOT_CLR = "#475569"
+    _VD = {
+        "strong": ("#dcfce7", "#16a34a", "#15803d"),
+        "usable": ("#f0fdf4", "#22c55e", "#16a34a"),
+        "weak":   ("#fffbeb", "#d97706", "#92400e"),
+        "none":   ("#fef2f2", "#dc2626", "#991b1b"),
+        "meta":   "#64748b", "desc": "#475569",
+    }
 else:
-    _PLY  = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                 font=dict(color="#888888", size=10))
-    _GRID = "rgba(128,128,128,0.2)"
-    _LINE = "rgba(128,128,128,0.4)"
+    _PLY       = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                      font=dict(color="#888888", size=10))
+    _GRID      = "rgba(128,128,128,0.2)"
+    _LINE      = "rgba(128,128,128,0.4)"
+    _ANNOT_CLR = "#aaaaaa"
+    _VD = {
+        "strong": ("#1a4731", "#3fb950", "#3fb950"),
+        "usable": ("#1a3a20", "#56d364", "#56d364"),
+        "weak":   ("#2d2510", "#f0b429", "#f0b429"),
+        "none":   ("#3d1f1f", "#f85149", "#f85149"),
+        "meta":   "#cccccc", "desc": "#aaaaaa",
+    }
 
 
 # ── Header ─────────────────────────────────────────────────────────────────────
@@ -1341,7 +1360,7 @@ with tab4:
             marker_color=bar_colors,
             text=[f"{v:+.3f}" for v in yy_df["IC"]],
             textposition="outside",
-            textfont=dict(size=9, color="#888888"),
+            textfont=dict(size=9, color=_ANNOT_CLR),
             hovertemplate=(
                 "<b>FY%{x}</b><br>"
                 "Rank IC = <b>%{y:.4f}</b><br>"
@@ -1438,7 +1457,7 @@ with tab4:
                 x=out[sel_key], y=out["Return_1Y_Fwd"],
                 mode="text",
                 text=out["Company"] + " '" + out["year"].astype(str).str[-2:],
-                textfont=dict(size=8, color="rgba(160,160,160,0.8)"),
+                textfont=dict(size=8, color=_ANNOT_CLR),
                 textposition="top center",
                 showlegend=False,
                 hoverinfo="skip",
@@ -1486,17 +1505,17 @@ with tab4:
     # overall verdict
     is_usable = (abs(dd_mean_ic) >= 0.05 and dd_pval <= 0.10 and dd_hr >= 50)
     if abs(dd_mean_ic) > 0.12 and dd_ic_ir > 1.0 and dd_pval < 0.05:
-        verdict_label, verdict_bg = "STRONG SIGNAL", "#1a4731"
-        verdict_border, verdict_text = "#3fb950", "#3fb950"
+        verdict_label = "STRONG SIGNAL"
+        verdict_bg, verdict_border, verdict_text = _VD["strong"]
     elif is_usable:
-        verdict_label, verdict_bg = "USABLE SIGNAL", "#1a3a20"
-        verdict_border, verdict_text = "#56d364", "#56d364"
+        verdict_label = "USABLE SIGNAL"
+        verdict_bg, verdict_border, verdict_text = _VD["usable"]
     elif dd_pval > 0.10:
-        verdict_label, verdict_bg = "NOT SIGNIFICANT", "#3d1f1f"
-        verdict_border, verdict_text = "#f85149", "#f85149"
+        verdict_label = "NOT SIGNIFICANT"
+        verdict_bg, verdict_border, verdict_text = _VD["none"]
     else:
-        verdict_label, verdict_bg = "WEAK / NOISY", "#2d2510"
-        verdict_border, verdict_text = "#f0b429", "#f0b429"
+        verdict_label = "WEAK / NOISY"
+        verdict_bg, verdict_border, verdict_text = _VD["weak"]
 
     _ic_strength_label = "Strong (&gt;0.10)" if abs(dd_mean_ic) > 0.10 else ("Meaningful (0.05-0.10)" if abs(dd_mean_ic) > 0.05 else "Weak (&lt;0.05)")
     _interp_html = (
@@ -1713,7 +1732,7 @@ with tab5:
         opacity=0.9,
         text=[f"{group_comp_stats[g]['ic_ir']:+.3f}" for g in grps_sorted],
         textposition="outside",
-        textfont=dict(size=9, color="#cccccc"),
+        textfont=dict(size=9, color=_ANNOT_CLR),
         hovertemplate=cmp_hover,
         cliponaxis=False,
     ))
@@ -1726,7 +1745,7 @@ with tab5:
         opacity=0.75,
         text=[group_comp_stats[g]["best_single_factor"] for g in grps_sorted],
         textposition="outside",
-        textfont=dict(size=8, color="#8b949e"),
+        textfont=dict(size=8, color=_ANNOT_CLR),
         hovertemplate=single_hover,
         cliponaxis=False,
     ))
@@ -1771,7 +1790,7 @@ with tab5:
             marker_color=_r2_colors,
             text=[f"{v:.1f}%" for v in _r2_vals],
             textposition="outside",
-            textfont=dict(size=9, color="#aaaaaa"),
+            textfont=dict(size=9, color=_ANNOT_CLR),
             hovertemplate="<b>%{y}</b><br>R² = %{x:.2f}%<br>"
                           "<span style='color:#aaa;font-size:10px'>% of return variance the composite explains on average</span>"
                           "<extra></extra>",
@@ -1806,7 +1825,7 @@ with tab5:
             marker_color=_beta_colors,
             text=[f"{v:+.2f}" for v in _beta_vals],
             textposition="outside",
-            textfont=dict(size=9, color="#aaaaaa"),
+            textfont=dict(size=9, color=_ANNOT_CLR),
             hovertemplate="<b>%{y}</b><br>Beta = %{x:+.3f}%/unit<br>"
                           "<span style='color:#aaa;font-size:10px'>Avg return shift per 1-unit move in composite score</span>"
                           "<extra></extra>",
@@ -2051,7 +2070,7 @@ with tab5:
                 marker_line_width=1,
                 text=[f"{v:+.3f}" for v in lb_sorted["Style Score"]],
                 textposition="outside",
-                textfont=dict(size=9, color="#aaaaaa"),
+                textfont=dict(size=9, color=_ANNOT_CLR),
                 hovertemplate=lb_hover,
                 cliponaxis=False,
             ))
@@ -2243,7 +2262,7 @@ with tab6:
         x=_ql, y=_qv,
         marker_color=[_qc[q] for q in _qk],
         text=[f"{v:+.1f}%" for v in _qv],
-        textposition="outside", textfont=dict(size=14, color="#cccccc"),
+        textposition="outside", textfont=dict(size=14, color=_ANNOT_CLR),
         hovertemplate="<b>%{x}</b><br>Avg Return: <b>%{y:+.2f}%</b><extra></extra>",
         cliponaxis=False, width=0.5,
     ))
@@ -2291,7 +2310,7 @@ with tab6:
         x=_sp_df["Year"], y=_sp_df["Spread"],
         marker_color=["#3fb950" if v >= 0 else "#f85149" for v in _sp_df["Spread"]],
         text=[f"{v:+.1f}%" for v in _sp_df["Spread"]],
-        textposition="outside", textfont=dict(size=9, color="#aaaaaa"),
+        textposition="outside", textfont=dict(size=9, color=_ANNOT_CLR),
         customdata=np.column_stack([_sp_df["Q1"], _sp_df["Q5"]]),
         hovertemplate=(
             "<b>FY%{x}</b><br>"
@@ -2380,23 +2399,23 @@ with tab6:
     # VERDICT + THE ANSWER
     # ══════════════════════════════════════════════════════════════════════════
     if   _spread_avg > 20 and _win_rate >= 70 and _sp_icir > 1.0:
-        _vl, _vbg, _vb, _vt = "STRONG EDGE",   "#1a4731", "#3fb950", "#3fb950"
+        _vl, (_vbg, _vb, _vt) = "STRONG EDGE",   _VD["strong"]
         _vd = (f"Q1 beat Q5 by <b>{_spread_avg:+.1f}%/yr</b> on average, winning "
                f"<b>{_win_rate:.0f}%</b> of years with a Spread IC-IR of <b>{_sp_icir:+.2f}</b>. "
                "This scoring system has a statistically reliable edge in this sector. "
                "The top-quintile companies below are the data-backed recommendation.")
     elif _spread_avg > 8 and _win_rate >= 60:
-        _vl, _vbg, _vb, _vt = "SOLID EDGE",    "#1a3a20", "#56d364", "#56d364"
+        _vl, (_vbg, _vb, _vt) = "SOLID EDGE",    _VD["usable"]
         _vd = (f"Q1 beat Q5 by <b>{_spread_avg:+.1f}%/yr</b>, winning <b>{_win_rate:.0f}%</b> of years. "
                "Signal is meaningful but not dominant — use alongside other conviction signals. "
                "Top-quintile below has a higher historical base rate than the rest of the sector.")
     elif _spread_avg > 0 and _win_rate >= 50:
-        _vl, _vbg, _vb, _vt = "WEAK EDGE",     "#2d2510", "#f0b429", "#f0b429"
+        _vl, (_vbg, _vb, _vt) = "WEAK EDGE",     _VD["weak"]
         _vd = (f"The signal direction is right ({_spread_avg:+.1f}%/yr spread) but inconsistent "
                f"(only {_win_rate:.0f}% win rate). "
                "Add more groups, tighten IC-IR filters, or use a broader universe before acting on this.")
     else:
-        _vl, _vbg, _vb, _vt = "NO EDGE",       "#3d1f1f", "#f85149", "#f85149"
+        _vl, (_vbg, _vb, _vt) = "NO EDGE",       _VD["none"]
         _vd = ("Q1 did not reliably beat Q5 in this sector with this group combination. "
                "The scoring system does not have a historical edge here. "
                "Try different groups or a different sector.")
@@ -2406,14 +2425,14 @@ with tab6:
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;">
         <div style="padding:5px 16px;border-radius:4px;border:1px solid {_vb};
                     font-size:0.75rem;font-weight:700;letter-spacing:.14em;color:{_vt};">{_vl}</div>
-        <div style="font-size:0.88rem;color:#ccc;">
+        <div style="font-size:0.88rem;color:{_VD['meta']};">
           Spread <b style="color:{_vt};">{_spread_avg:+.1f}%/yr</b> &nbsp;·&nbsp;
           Win Rate <b style="color:{_vt};">{_win_rate:.0f}%</b> &nbsp;·&nbsp;
           Spread IC-IR <b style="color:{_vt};">{_sp_icir:+.2f}</b> &nbsp;·&nbsp;
           {_n_yrs_t6} years tested
         </div>
       </div>
-      <div style="font-size:0.82rem;color:#aaa;line-height:1.7;">{_vd}</div>
+      <div style="font-size:0.82rem;color:{_VD['desc']};line-height:1.7;">{_vd}</div>
     </div>
     """, unsafe_allow_html=True)
 
