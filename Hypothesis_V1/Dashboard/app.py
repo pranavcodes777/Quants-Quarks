@@ -1412,22 +1412,17 @@ with tab5:
     st.markdown('<div class="ac-hd">Section 1 — Group Composite IC (each group combined into one score)</div>',
                 unsafe_allow_html=True)
 
-    # ── Column toggles ────────────────────────────────────────────────────────
-    _t5c1, _t5c2 = st.columns([3, 2])
-    with _t5c2:
-        st.markdown('<div class="section-hd">Table Columns</div>', unsafe_allow_html=True)
-        _tt1, _tt2, _tt3 = st.columns(3)
-        with _tt1:
-            t5_show_mic   = st.checkbox("Mean IC",    value=True,  key="t5_show_mic")
-            t5_show_icir  = st.checkbox("IC-IR",      value=True,  key="t5_show_icir")
-            t5_show_r2    = st.checkbox("R² (%)",     value=True,  key="t5_show_r2")
-        with _tt2:
-            t5_show_hr    = st.checkbox("Hit Rate",   value=True,  key="t5_show_hr")
-            t5_show_pval  = st.checkbox("p-value",    value=True,  key="t5_show_pval")
-            t5_show_beta  = st.checkbox("Beta",       value=True,  key="t5_show_beta")
-        with _tt3:
-            t5_show_nyrs  = st.checkbox("N Years",    value=True,  key="t5_show_nyrs")
-            t5_show_delta = st.checkbox("Δ vs Single",value=True,  key="t5_show_delta")
+    # ── Column toggles — single horizontal row ───────────────────────────────
+    st.markdown('<div class="section-hd">Show / Hide Columns</div>', unsafe_allow_html=True)
+    _tc = st.columns(8)
+    with _tc[0]: t5_show_mic   = st.checkbox("Mean IC",     value=True, key="t5_show_mic")
+    with _tc[1]: t5_show_icir  = st.checkbox("IC-IR",       value=True, key="t5_show_icir")
+    with _tc[2]: t5_show_hr    = st.checkbox("Hit Rate",    value=True, key="t5_show_hr")
+    with _tc[3]: t5_show_pval  = st.checkbox("p-value",     value=True, key="t5_show_pval")
+    with _tc[4]: t5_show_r2    = st.checkbox("R² (%)",      value=True, key="t5_show_r2")
+    with _tc[5]: t5_show_beta  = st.checkbox("Beta",        value=True, key="t5_show_beta")
+    with _tc[6]: t5_show_nyrs  = st.checkbox("N Years",     value=True, key="t5_show_nyrs")
+    with _tc[7]: t5_show_delta = st.checkbox("Δ vs Single", value=True, key="t5_show_delta")
 
     tbl_rows = []
     for grp, gs in sorted(group_comp_stats.items(), key=lambda x: abs(x[1]["ic_ir"]), reverse=True):
