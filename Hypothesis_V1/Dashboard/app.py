@@ -803,7 +803,7 @@ with tab1:
                 hoverongaps=False,
                 hovertemplate="<b>%{y}</b>  x  <b>%{x}</b><br>r = %{z:.3f}<extra></extra>",
             ))
-            fig_hm.update_layout(**_PLY, height=530, margin=dict(l=0, r=0, t=10, b=0),
+            fig_hm.update_layout(**_PLY, height=530, margin=dict(l=0, r=0, t=10, b=50),
                 xaxis=dict(tickangle=-40, tickfont=dict(size=8.5), showgrid=False),
                 yaxis=dict(tickfont=dict(size=8.5), showgrid=False),
             )
@@ -933,7 +933,7 @@ with tab2:
             line=dict(color="#f0b429", width=2.5, dash="dot"),
         )
 
-    fig_line.update_layout(**_PLY, height=360, showlegend=True, margin=dict(l=0, r=0, t=20, b=0),
+    fig_line.update_layout(**_PLY, height=360, showlegend=True, margin=dict(l=0, r=0, t=20, b=50),
         legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=10)),
         xaxis=dict(showgrid=False, tickformat="d"),
         yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False),
@@ -947,7 +947,7 @@ with tab2:
         labels={f_choice: meta["label"]},
         color_discrete_sequence=px.colors.qualitative.Set2,
     )
-    fig_box.update_layout(**_PLY, height=280, margin=dict(l=0, r=0, t=10, b=0),
+    fig_box.update_layout(**_PLY, height=280, margin=dict(l=0, r=0, t=10, b=50),
         xaxis=dict(showgrid=False),
         yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False),
     )
@@ -1014,7 +1014,7 @@ with tab3:
                        annotation_text="50th", annotation_font_color=_LINE)
     fig_snap.update_layout(**_PLY,
         title=f"{snap_co}  ·  FY{snap_yr}  ·  Percentile rank vs {sector} peers",
-        height=360, margin=dict(l=0, r=0, t=50, b=0),
+        height=360, margin=dict(l=0, r=0, t=50, b=50),
         xaxis=dict(tickangle=-35, tickfont=dict(size=8.5), showgrid=False),
         yaxis=dict(range=[0, 100], title="Percentile", showgrid=True, gridcolor=_GRID, zeroline=False),
         showlegend=False,
@@ -1996,7 +1996,7 @@ with tab5:
             fig_st.update_layout(**_PLY,
                 title=f"Style Composite — {' + '.join(sel_style)}  |  IC-IR {s_icir:+.3f}  |  Hit Rate {s_hr:.0f}%",
                 height=360,
-                margin=dict(l=0, r=0, t=45, b=0),
+                margin=dict(l=0, r=0, t=45, b=50),
                 xaxis=dict(type="category", showgrid=False, tickfont=dict(size=10)),
                 yaxis=dict(showgrid=True, gridcolor=_GRID, zeroline=False,
                            tickformat=".3f", nticks=8, tickfont=dict(size=9)),
