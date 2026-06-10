@@ -179,9 +179,14 @@ if st.session_state.theme == "light":
   div[data-testid="stPlotlyChart"]      { background: #ffffff !important;
                                           border: 1px solid #dde3ea !important;
                                           border-radius: 12px !important;
-                                          padding: 12px 8px 20px !important;
-                                          box-shadow: 0 2px 8px rgba(0,0,0,0.07) !important; }
-  /* Force ALL plotly SVG text dark — overrides hardcoded inline colors */
+                                          padding: 12px 8px 8px !important;
+                                          box-shadow: 0 2px 8px rgba(0,0,0,0.07) !important;
+                                          overflow: visible !important; }
+  /* Let SVG labels overflow past chart boundary so they're never clipped */
+  .js-plotly-plot .main-svg,
+  .js-plotly-plot .svg-container        { overflow: visible !important; }
+
+  /* Force ALL plotly SVG text dark */
   .js-plotly-plot text                  { fill: #0f172a !important; }
   .js-plotly-plot .xtick text,
   .js-plotly-plot .ytick text           { fill: #334155 !important; font-size: 11px !important; }
@@ -193,6 +198,22 @@ if st.session_state.theme == "light":
   /* Grid lines */
   .xgrid line, .ygrid line              { stroke: rgba(15,23,42,0.08) !important; }
   .zerolinelayer line                   { stroke: rgba(15,23,42,0.2) !important; }
+
+  /* ── st.metric cards — give them a proper card border ── */
+  div[data-testid="stMetric"]           { background: #ffffff !important;
+                                          border: 1px solid #e2e8f0 !important;
+                                          border-radius: 10px !important;
+                                          padding: 14px 18px !important;
+                                          box-shadow: 0 1px 4px rgba(0,0,0,0.05) !important; }
+  div[data-testid="stMetricValue"]      { color: #0f172a !important; font-weight: 700 !important; }
+  div[data-testid="stMetricLabel"]      { color: #64748b !important; }
+  div[data-testid="stMetricDelta"]      { font-size: 0.75rem !important; }
+
+  /* ── Dataframe — dark canvas is unfixable via CSS; frame it so it looks intentional ── */
+  div[data-testid="stDataFrame"]        { border: 1.5px solid #334155 !important;
+                                          border-radius: 10px !important;
+                                          box-shadow: 0 3px 10px rgba(0,0,0,0.12) !important;
+                                          overflow: hidden !important; }
 
   /* ── Progress / bar tracks ── */
   .p2-bar-track, .p2-mid-wrap           { background: #e2e8f0 !important; }
