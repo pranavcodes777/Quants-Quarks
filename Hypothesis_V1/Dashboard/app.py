@@ -755,6 +755,19 @@ df_mh["Return_2Y_Fwd"] = ((1 + df_mh["Return_1Y_Fwd"]/100)*(1 + df_mh["_R1"]/100
 df_mh["Return_3Y_Fwd"] = ((1 + df_mh["Return_1Y_Fwd"]/100)*(1 + df_mh["_R1"]/100)*(1 + df_mh["_R2"]/100) - 1)*100
 df_mh = df_mh[["Company", "year", "Return_1Y_Fwd", "Return_2Y_Fwd", "Return_3Y_Fwd"]]
 
+# Sub-annual forward returns (1M, 2M, 3M, 6M, 9M) from OHLCV price data
+_SUB_ANN_PATH = os.path.join(os.path.dirname(__file__), "..", "Database", "sub_annual_fwd_returns.parquet")
+
+@st.cache_data(show_spinner=False)
+def _load_sub_annual(_hash=""):
+    if not os.path.exists(_SUB_ANN_PATH):
+        return pd.DataFrame()
+    return pd.read_parquet(_SUB_ANN_PATH)
+
+df_sub = _load_sub_annual(_parquet_hash())
+if not df_sub.empty:
+    df_mh = df_mh.merge(df_sub, on=["Company", "year"], how="left")
+
 # Pre-compute composites (cached — runs once per sector/filter/threshold combo)
 retained_per_group, group_comp_stats, factor_icir_map = compute_composite_stats(
     sector, tuple(sorted(sel_cos)),
@@ -2772,10 +2785,18 @@ with tab7:
 
         _sd_default = _ei_groups[:min(4, len(_ei_groups))]
         _sd_sel = st.multiselect("Groups to analyse", _ei_groups, default=_sd_default, key="sd_grp")
-        _sd_hz  = st.multiselect("Horizons", ["1Y", "2Y", "3Y"], default=["1Y", "2Y", "3Y"], key="sd_hz")
+        _ALL_HZ     = ["1M", "2M", "3M", "6M", "9M", "1Y", "2Y", "3Y"]
+        _HZ_COL_MAP = {
+            "1M": "Return_1M_Fwd", "2M": "Return_2M_Fwd", "3M": "Return_3M_Fwd",
+            "6M": "Return_6M_Fwd", "9M": "Return_9M_Fwd",
+            "1Y": "Return_1Y_Fwd", "2Y": "Return_2Y_Fwd", "3Y": "Return_3Y_Fwd",
+        }
+        _avail_hz   = [h for h in _ALL_HZ if _HZ_COL_MAP[h] in df_mh.columns]
+        _sd_default_hz = [h for h in ["1M", "3M", "6M", "1Y", "2Y", "3Y"] if h in _avail_hz]
+        _sd_hz = st.multiselect("Horizons", _avail_hz, default=_sd_default_hz, key="sd_hz")
 
         if _sd_sel and _sd_hz:
-            _hz_col_map = {"1Y": "Return_1Y_Fwd", "2Y": "Return_2Y_Fwd", "3Y": "Return_3Y_Fwd"}
+            _hz_col_map = _HZ_COL_MAP
             _hz_avail   = [h for h in _sd_hz if h in _hz_col_map and _hz_col_map[h] in df_mh.columns]
 
             # Compute IC per group × horizon
@@ -3006,7 +3027,8 @@ with tab7:
                     title=dict(text="Top 20 Companies by Q1 Persistence Score", font=dict(size=12)),
                     height=max(320, len(_top20) * 26 + 80),
                     margin=dict(l=0, r=60, t=40, b=55),
-                    xaxis=dict(showgrid=True, gridcolor=_GRID, ticksuffix="%", range=[0, 115]),
+                    xaxis=dict(showgrid=True, gridcolor=_GRID, ticksuffix="%",
+                               range=[0, max(float(_top20["Persistence%"].max()) * 1.18, 105)]),
                     yaxis=dict(showgrid=False, autorange="reversed", tickfont=dict(size=9)),
                 )
                 st.plotly_chart(fig_ps, use_container_width=True)
@@ -3216,7 +3238,8 @@ with tab7:
                         title=dict(text=f"The Shortlist — Top 25 by Confidence Score  ·  FY{int(_ss_latest)}", font=dict(size=12)),
                         height=max(360, len(_top_ss) * 26 + 80),
                         margin=dict(l=0, r=60, t=40, b=55),
-                        xaxis=dict(showgrid=True, gridcolor=_GRID, title="Confidence Score (0–100)", range=[0, 115]),
+                        xaxis=dict(showgrid=True, gridcolor=_GRID, title="Confidence Score (0–100)",
+                                   range=[0, max(float(_top_ss["Confidence"].max()) * 1.18, 105)]),
                         yaxis=dict(showgrid=False, autorange="reversed", tickfont=dict(size=9)),
                     )
                     st.plotly_chart(fig_ss, use_container_width=True)
