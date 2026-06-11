@@ -3272,3 +3272,168 @@ with tab7:
                     st.info("No companies found in composite scoring for the latest year with passing groups.")
             else:
                 st.info("No data years found for the passing groups.")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # SECTION 4 — BROAD PORTFOLIO
+    # ══════════════════════════════════════════════════════════════════════
+    with st.expander("Section 4 — Broad Portfolio: Top 20% Equities Across Every Sector", expanded=True):
+        st.markdown('<div class="ac-hd">Broad Portfolio — Automatic Top-20% Picks from Each Sector</div>', unsafe_allow_html=True)
+        st.caption(
+            "For every sector: take the top-5 groups by IC-IR, build a weighted composite score, "
+            "rank all companies, return the top 20%. No manual input — fully automatic. "
+            "Think of this as your starting watchlist before further due diligence."
+        )
+
+        @st.cache_data(show_spinner="Building cross-sector broad portfolio…")
+        def _build_broad_portfolio(file_hash: str, yr_lo: int, yr_hi: int, thr: float, meth: str):
+            all_df = _load_all(file_hash)
+            rows = []
+            for sec in SECTORS:
+                df_s = all_df[all_df["Sector"] == sec].copy()
+                df_fwd_s = df_s[df_s["Return_1Y_Fwd"].notna()].copy()
+                if df_fwd_s.empty:
+                    continue
+                all_cos = tuple(sorted(df_fwd_s["Company"].unique()))
+                try:
+                    _, gcs, _ = compute_composite_stats(
+                        sec, all_cos, yr_lo, yr_hi, thr, meth, file_hash
+                    )
+                except Exception:
+                    continue
+                if not gcs:
+                    continue
+
+                # Top-5 groups by IC-IR (only positive IC-IR)
+                ranked_g = sorted(
+                    [(g, s) for g, s in gcs.items() if s.get("ic_ir", 0) > 0],
+                    key=lambda x: x[1]["ic_ir"], reverse=True
+                )[:5]
+                if not ranked_g:
+                    continue
+
+                # Latest year with data
+                latest_yr = max(
+                    yr for g, _ in ranked_g
+                    for yr in gcs[g]["scores_by_year"]
+                    if gcs[g]["scores_by_year"][yr]
+                )
+
+                # IC-IR weighted composite for latest year
+                _co_num: dict[str, float] = {}
+                _co_den: dict[str, float] = {}
+                for g, s in ranked_g:
+                    w   = max(s.get("ic_ir", 0.0), 0.0)
+                    scd = s["scores_by_year"].get(latest_yr, {})
+                    for co, sc in scd.items():
+                        _co_num[co] = _co_num.get(co, 0.0) + sc * w
+                        _co_den[co] = _co_den.get(co, 0.0) + w
+
+                final = {co: _co_num[co] / _co_den[co] for co in _co_num if _co_den[co] > 0}
+                if not final:
+                    continue
+
+                sorted_cos = sorted(final, key=final.get, reverse=True)
+                top_n      = max(1, len(sorted_cos) // 5)
+                vals       = np.array(list(final.values()))
+
+                for rank, co in enumerate(sorted_cos[:top_n], 1):
+                    pct = float(np.mean(vals <= final[co]) * 100)
+                    rows.append({
+                        "Sector":   sec,
+                        "Rank":     rank,
+                        "Company":  co,
+                        "Score":    round(final[co], 4),
+                        "Pct":      round(pct, 1),
+                        "Year":     int(latest_yr),
+                        "Groups":   ", ".join(g for g, _ in ranked_g),
+                    })
+
+            return pd.DataFrame(rows)
+
+        bp_df = _build_broad_portfolio(
+            _parquet_hash(),
+            int(yr_range[0]), int(yr_range[1]),
+            threshold, method
+        )
+
+        if bp_df.empty:
+            st.info("No cross-sector data available. Make sure multiple sectors have data in the parquet.")
+        else:
+            # ── KPI strip ────────────────────────────────────────────────
+            _bp_sectors = bp_df["Sector"].nunique()
+            _bp_total   = len(bp_df)
+            _bp_yr      = int(bp_df["Year"].mode()[0]) if not bp_df.empty else "—"
+            _bpk1, _bpk2, _bpk3 = st.columns(3)
+            _bpk1.metric("Sectors Covered",   str(_bp_sectors),
+                         help="Number of sectors with enough data to build a composite")
+            _bpk2.metric("Total Names",        str(_bp_total),
+                         help="Companies across all sectors in the top 20% quintile")
+            _bpk3.metric("Based on FY",        str(_bp_yr),
+                         help="Latest fiscal year with available composite scores")
+
+            # ── Sector-grouped bar chart ──────────────────────────────────
+            _sec_pal = [
+                "#3fb950","#58a6ff","#f0b429","#ff7b72","#a371f7",
+                "#39d353","#79c0ff","#ffa657","#ff9580","#c9b1ff",
+                "#26a641","#1f6feb","#d29922","#da3633","#8957e5",
+            ]
+            _sec_list = sorted(bp_df["Sector"].unique())
+            _sec_clr  = {s: _sec_pal[i % len(_sec_pal)] for i, s in enumerate(_sec_list)}
+
+            fig_bp = go.Figure()
+            for sec in _sec_list:
+                _sub = bp_df[bp_df["Sector"] == sec].sort_values("Score", ascending=False)
+                fig_bp.add_trace(go.Bar(
+                    name=sec,
+                    x=_sub["Company"],
+                    y=_sub["Pct"],
+                    marker_color=_sec_clr[sec],
+                    text=[f"{v:.0f}" for v in _sub["Pct"]],
+                    textposition="outside",
+                    textfont=dict(size=8, color=_ANNOT_CLR),
+                    customdata=_sub[["Score", "Sector", "Year"]].values,
+                    hovertemplate=(
+                        "<b>%{x}</b>  ·  %{customdata[1]}<br>"
+                        "Score percentile: <b>%{y:.1f}%</b><br>"
+                        "Composite score: %{customdata[0]:.4f}<br>"
+                        "FY: %{customdata[2]}<extra></extra>"
+                    ),
+                ))
+
+            fig_bp.update_layout(**_PLY,
+                title=dict(text="Broad Portfolio — Top 20% by Sector  ·  score percentile within sector universe", font=dict(size=12)),
+                height=max(340, 30 * max(len(bp_df[bp_df["Sector"] == s]) for s in _sec_list) + 120),
+                margin=dict(l=0, r=0, t=40, b=80),
+                xaxis=dict(showgrid=False, tickfont=dict(size=8), tickangle=-45),
+                yaxis=dict(showgrid=True, gridcolor=_GRID, ticksuffix="%",
+                           title="Score Percentile (within sector)", range=[0, 115]),
+                barmode="group",
+                legend=dict(orientation="h", y=-0.25, font=dict(size=9), title="Sector"),
+            )
+            st.plotly_chart(fig_bp, use_container_width=True)
+
+            # ── Full table, sector-grouped ────────────────────────────────
+            _bp_show = bp_df[["Sector","Rank","Company","Pct","Score","Year","Groups"]].copy()
+            _bp_show = _bp_show.sort_values(["Sector","Rank"]).reset_index(drop=True)
+            _bp_show.index = range(1, len(_bp_show) + 1)
+            _bp_show.columns = ["Sector","Rank","Company","Score Pct %","Raw Score","FY","Top-5 Groups"]
+            _bp_show.index.name = "#"
+
+            def _bp_style(v):
+                if isinstance(v, float):
+                    if v >= 90: return "color:#3fb950;font-weight:700"
+                    if v >= 80: return "color:#56d364"
+                    return "color:#8b949e"
+                return ""
+
+            st.dataframe(
+                _bp_show.style.map(_bp_style, subset=["Score Pct %"]),
+                use_container_width=True,
+                height=min(700, (len(_bp_show) + 1) * 36 + 40),
+            )
+            st.caption(
+                "Top-5 Groups = the 5 highest IC-IR factor groups used per sector. "
+                "Score Pct = percentile rank of this company within its sector universe. "
+                "A company appearing here = top 20% composite score in its sector for the latest FY. "
+                "This is a quantitative first-pass — not investment advice."
+            )
