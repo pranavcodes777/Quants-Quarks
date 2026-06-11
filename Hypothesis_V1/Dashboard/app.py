@@ -2843,7 +2843,7 @@ with tab7:
 
                     # IC Heatmap: groups × horizons
                     _hm_pivot = _valid.pivot(index="Group", columns="Horizon", values="MeanIC")
-                    _hm_pivot = _hm_pivot.reindex(columns=[h for h in ["1Y", "2Y", "3Y"] if h in _hm_pivot.columns])
+                    _hm_pivot = _hm_pivot.reindex(columns=[h for h in _ALL_HZ if h in _hm_pivot.columns])
                     _hm_text  = _hm_pivot.map(lambda v: f"{v:.3f}" if not (isinstance(v, float) and np.isnan(v)) else "—")
 
                     fig_hm = go.Figure(go.Heatmap(
@@ -2869,7 +2869,7 @@ with tab7:
 
                     # IC Decay Line: one line per group
                     fig_dc = go.Figure()
-                    _hz_order = [h for h in ["1Y", "2Y", "3Y"] if h in _hz_avail]
+                    _hz_order = [h for h in _ALL_HZ if h in _hz_avail]
                     _dc_palette = ["#58a6ff", "#3fb950", "#f0b429", "#ff7b72", "#a371f7", "#39d353"]
                     for _gi, g in enumerate(_sd_sel):
                         _g_vals  = _valid[_valid["Group"] == g].set_index("Horizon")["MeanIC"]
