@@ -2817,7 +2817,7 @@ with tab7:
                         _sub = _sub.dropna(subset=["score"])
                         if len(_sub) < 10:
                             continue
-                        _ic = float(np.corrcoef(_sub["score"], _sub[hz_col])[0, 1])
+                        _ic = float(stats.spearmanr(_sub["score"], _sub[hz_col])[0])
                         if not np.isnan(_ic):
                             _ic_vals.append(_ic)
                     _mean_ic = float(np.mean(_ic_vals)) if _ic_vals else np.nan
