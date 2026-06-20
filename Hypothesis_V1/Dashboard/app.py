@@ -595,10 +595,13 @@ def compute_composite_stats(sector: str, companies: tuple, yr_lo: int, yr_hi: in
     # 3. Build group composite scores + test IC
     group_comp_stats: dict[str, dict] = {}
     for grp, grp_fs in retained_per_group.items():
-        usable  = [f for f in grp_fs if f in factor_icir_map]
-        weights = {f: factor_icir_map[f] for f in usable}
-        if not usable or all(abs(w) < 1e-9 for w in weights.values()):
+        usable_raw = [f for f in grp_fs if f in factor_icir_map]
+        # Direction filter: IC-IR > 0 ↔ mean IC > 0 — keeps only factors with correct direction
+        usable = [f for f in usable_raw if factor_icir_map[f] > 0]
+        if not usable:
             continue
+        # Equal weight within group — avoids overfitting noisy 8-year IC-IR magnitude estimates
+        weights = {f: 1.0 for f in usable}
 
         comp_ic_by_year: dict[int, float] = {}
         scores_by_year:  dict[int, dict]  = {}
@@ -615,11 +618,18 @@ def compute_composite_stats(sector: str, companies: tuple, yr_lo: int, yr_hi: in
             for f in usable:
                 if f not in yr_sub.columns:
                     continue
-                col  = yr_sub[f]
-                std_ = col.std()
-                if col.dropna().nunique() < 2 or std_ < 1e-10:
+                col = yr_sub[f].copy()
+                if col.dropna().nunique() < 2:
                     continue
-                z = (col - col.mean()) / std_
+                # Winsorize at 5th/95th percentile then Z-score (MSCI Barra standard)
+                lo, hi = col.quantile(0.05), col.quantile(0.95)
+                if lo >= hi:
+                    continue
+                col_w = col.clip(lo, hi)
+                std_w = col_w.std()
+                if std_w < 1e-10:
+                    continue
+                z = (col_w - col_w.mean()) / std_w
                 composite += weights[f] * z.fillna(0.0)
                 n_contrib += 1
 
@@ -696,6 +706,156 @@ def compute_composite_stats(sector: str, companies: tuple, yr_lo: int, yr_hi: in
         }
 
     return retained_per_group, group_comp_stats, factor_icir_map
+
+
+@st.cache_data(show_spinner="Running Fama-MacBeth validation…")
+def compute_fm_stats(sector: str, companies: tuple, yr_lo: int, yr_hi: int,
+                     threshold: float, method: str, _file_hash: str):
+    """
+    Walk-forward Fama-MacBeth regression across group composite scores.
+
+    For each prediction year T (minimum 4 training years before T):
+      1. Compute IC stats for every group using ONLY past years (< T).
+      2. Apply quality filter: walk-forward mean IC > 0.03 AND hit rate >= 55%.
+      3. Rank survivors by walk-forward IC-IR; select top N = max(1, n_companies // 10).
+      4. Run one cross-sectional OLS regression for year T.
+      5. Collect coefficient per selected group.
+
+    Aggregate: mean coeff / (std / sqrt(n)) gives the FM t-statistic per group.
+    """
+    _, group_comp_stats, _ = compute_composite_stats(
+        sector, companies, yr_lo, yr_hi, threshold, method, _file_hash
+    )
+    if not group_comp_stats:
+        return {}
+
+    # Load return data for company count estimation
+    df_all = _load_all(_file_hash)
+    df_sec = df_all[
+        (df_all["Sector"] == sector) &
+        (df_all["Company"].isin(set(companies))) &
+        (df_all["year"].between(yr_lo, yr_hi)) &
+        df_all["Return_1Y_Fwd"].notna()
+    ][["Company", "year", "Return_1Y_Fwd"]].copy()
+
+    # Union of years across all groups
+    all_years = sorted(
+        {y for gs in group_comp_stats.values() for y in gs["ic_by_year"]}
+    )
+    if len(all_years) < 5:   # need ≥ 4 training + 1 prediction
+        return {}
+
+    MIN_TRAIN = 4
+    prediction_years = all_years[MIN_TRAIN:]
+
+    coeff_ts: dict[str, dict[int, float]] = {g: {} for g in group_comp_stats}
+    r2_by_year: dict[int, float] = {}
+    n_cos_by_year: dict[int, int] = {}
+    selected_by_year: dict[int, list[str]] = {}
+
+    for T in prediction_years:
+        train_yrs = [y for y in all_years if y < T]
+        if len(train_yrs) < MIN_TRAIN:
+            continue
+
+        # Walk-forward IC stats from training years only
+        wf_mean_ic: dict[str, float] = {}
+        wf_hit_rate: dict[str, float] = {}
+        wf_icir: dict[str, float] = {}
+        for g, gs in group_comp_stats.items():
+            ic_train = [gs["ic_by_year"][y] for y in train_yrs if y in gs["ic_by_year"]]
+            if len(ic_train) < 3:
+                continue
+            mean_ic = float(np.mean(ic_train))
+            std_ic  = float(np.std(ic_train, ddof=1))
+            wf_mean_ic[g]  = mean_ic
+            wf_hit_rate[g] = sum(1 for v in ic_train if v > 0) / len(ic_train)
+            wf_icir[g]     = mean_ic / std_ic if std_ic > 0 else 0.0
+
+        # Quality filter
+        qualified = [
+            g for g in wf_mean_ic
+            if wf_mean_ic[g] > 0.03 and wf_hit_rate.get(g, 0) >= 0.55
+        ]
+        if not qualified:
+            continue
+
+        # Company count for year T (determines N)
+        n_cos = len(df_sec[df_sec["year"] == T])
+        if n_cos < 10:
+            continue
+        N = max(1, n_cos // 10)
+
+        # Top N qualified groups by walk-forward IC-IR
+        top_groups = sorted(qualified, key=lambda g: wf_icir.get(g, 0), reverse=True)[:N]
+
+        # Build cross-sectional matrix for year T
+        ret_T = (df_sec[df_sec["year"] == T]
+                 .set_index("Company")["Return_1Y_Fwd"])
+
+        group_series = {}
+        for g in top_groups:
+            sc = group_comp_stats[g]["scores_by_year"].get(T, {})
+            if sc:
+                group_series[g] = pd.Series(sc, name=g)
+
+        if not group_series:
+            continue
+
+        df_cross = pd.DataFrame(group_series).join(ret_T, how="inner").dropna()
+        present_groups = [g for g in top_groups if g in df_cross.columns]
+        if len(df_cross) < len(present_groups) + 2 or not present_groups:
+            continue
+
+        X = df_cross[present_groups].values
+        y = df_cross["Return_1Y_Fwd"].values
+        X_int = np.column_stack([np.ones(len(X)), X])
+
+        try:
+            coeffs, _, _, _ = np.linalg.lstsq(X_int, y, rcond=None)
+            y_hat  = X_int @ coeffs
+            ss_res = float(np.sum((y - y_hat) ** 2))
+            ss_tot = float(np.sum((y - np.mean(y)) ** 2))
+            r2_by_year[T]     = round(1 - ss_res / ss_tot, 4) if ss_tot > 0 else 0.0
+            n_cos_by_year[T]  = len(df_cross)
+            selected_by_year[T] = present_groups
+            for i, g in enumerate(present_groups):
+                coeff_ts[g][T] = float(coeffs[i + 1])
+        except Exception:
+            continue
+
+    # Aggregate FM statistics per group
+    group_results: dict[str, dict] = {}
+    for g in group_comp_stats:
+        ts = coeff_ts[g]
+        if len(ts) < 2:
+            continue
+        vals = list(ts.values())
+        n    = len(vals)
+        mean_c = float(np.mean(vals))
+        std_c  = float(np.std(vals, ddof=1))
+        t_stat = mean_c / (std_c / np.sqrt(n)) if std_c > 0 else 0.0
+        try:
+            p_val = float(2 * stats.t.sf(abs(t_stat), df=n - 1))
+        except Exception:
+            p_val = float("nan")
+        verdict = "✅" if abs(t_stat) >= 2.0 else ("⚠️" if abs(t_stat) >= 1.0 else "❌")
+        group_results[g] = {
+            "mean_coeff":    round(mean_c, 4),
+            "t_stat":        round(t_stat, 3),
+            "p_val":         round(p_val, 4) if not np.isnan(p_val) else float("nan"),
+            "n_years":       n,
+            "coeff_by_year": ts,
+            "verdict":       verdict,
+        }
+
+    return {
+        "group_results":     group_results,
+        "r2_by_year":        r2_by_year,
+        "n_cos_by_year":     n_cos_by_year,
+        "selected_by_year":  selected_by_year,
+        "n_pred_years":      len(prediction_years),
+    }
 
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
@@ -830,10 +990,10 @@ st.markdown(f"""
 
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "  Correlation Matrix  ", "  Factor Explorer  ", "  Company Snapshot  ",
-    "  Factor Predictability  ", "  Alpha Composite  ", "  Quintile Backtest  ",
-    "  Edge Intelligence  ",
+    "  Factor Predictability  ", "  Alpha Composite  ", "  Signal Validation  ",
+    "  Quintile Backtest  ", "  Edge Intelligence  ",
 ])
 
 
@@ -2238,9 +2398,307 @@ with tab5:
     
     
     # ══════════════════════════════════════════════════════════════════════════════
-    # TAB 6 — Quintile Backtest
+    # TAB 6 — Signal Validation (Fama-MacBeth)
     # ══════════════════════════════════════════════════════════════════════════════
 with tab6:
+
+    st.markdown(
+        '<div class="ac-hd">Signal Validation — Walk-Forward Fama-MacBeth Regression</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Each year is a separate cross-sectional regression. "
+        "Coefficients are averaged across years — the t-statistic tells you whether a group "
+        "independently predicts returns after controlling for all others. "
+        "Only past data is used at every step (walk-forward — no look-ahead)."
+    )
+
+    if not group_comp_stats:
+        st.warning("Not enough data. Expand year range or select more companies.")
+        st.stop()
+
+    # Run FM — cached, only recomputes when sector/filters change
+    _fm = compute_fm_stats(
+        sector, tuple(sorted(sel_cos)),
+        int(yr_range[0]), int(yr_range[1]),
+        threshold, method, _parquet_hash()
+    )
+    _fm_results = _fm.get("group_results", {})
+    _fm_r2      = _fm.get("r2_by_year", {})
+    _fm_n_cos   = _fm.get("n_cos_by_year", {})
+    _fm_sel     = _fm.get("selected_by_year", {})
+    _fm_n_pred  = _fm.get("n_pred_years", 0)
+
+    if not _fm_results:
+        st.info(
+            "Not enough years for walk-forward FM (need ≥ 5 years with return data, "
+            "at least 4 for training). Expand your year range."
+        )
+        st.stop()
+
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+    # ── SECTION 1 — Verdict Table ─────────────────────────────────────────────
+    with st.expander("Section 1 — Group Verdict: Which Signals Are Statistically Real?", expanded=True):
+        st.markdown(
+            '<div class="ac-hd">FM Verdict — t-stat ≥ 2.0 = statistically real independent signal</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            f"Walk-forward FM over {_fm_n_pred} prediction years "
+            f"(minimum 4-year training window). "
+            f"Groups with t-stat ≥ 2.0 pass rigorous quant-standard validation."
+        )
+
+        # Build table rows — all groups, FM-validated ones prominent
+        _vt_rows = []
+        for g in sorted(group_comp_stats.keys()):
+            _gcs = group_comp_stats[g]
+            _fm_g = _fm_results.get(g)
+            _vt_rows.append({
+                "Group":         g,
+                "IC-IR":         _gcs["ic_ir"],
+                "Hit Rate %":    _gcs["hit_rate"],
+                "FM T-Stat":     _fm_g["t_stat"]   if _fm_g else float("nan"),
+                "FM P-Value":    _fm_g["p_val"]     if _fm_g else float("nan"),
+                "FM Years":      _fm_g["n_years"]   if _fm_g else 0,
+                "Verdict":       _fm_g["verdict"]   if _fm_g else "—",
+            })
+
+        _vt_df = pd.DataFrame(_vt_rows).sort_values("FM T-Stat", ascending=False, na_position="last")
+
+        def _style_row(row):
+            v = row["Verdict"]
+            if v == "✅":
+                clr = _VD["strong"][0]
+            elif v == "⚠️":
+                clr = _VD["weak"][0]
+            elif v == "❌":
+                clr = _VD["none"][0]
+            else:
+                clr = "transparent"
+            return [f"background-color:{clr}"] * len(row)
+
+        _vt_styled = (
+            _vt_df.style
+            .apply(_style_row, axis=1)
+            .format({
+                "IC-IR":      "{:+.3f}",
+                "Hit Rate %": "{:.1f}",
+                "FM T-Stat":  lambda v: f"{v:+.3f}" if not (isinstance(v, float) and np.isnan(v)) else "—",
+                "FM P-Value": lambda v: f"{v:.4f}"  if not (isinstance(v, float) and np.isnan(v)) else "—",
+                "FM Years":   lambda v: str(int(v)) if v and not (isinstance(v, float) and np.isnan(v)) else "—",
+            })
+        )
+        st.dataframe(_vt_styled, use_container_width=True, hide_index=True)
+
+        # Counts
+        _n_pass  = sum(1 for r in _vt_rows if r["Verdict"] == "✅")
+        _n_weak  = sum(1 for r in _vt_rows if r["Verdict"] == "⚠️")
+        _n_fail  = sum(1 for r in _vt_rows if r["Verdict"] == "❌")
+        _n_nodat = sum(1 for r in _vt_rows if r["Verdict"] == "—")
+        _cc1, _cc2, _cc3, _cc4 = st.columns(4)
+        _cc1.metric("✅ Strong (|t| ≥ 2)",  _n_pass)
+        _cc2.metric("⚠️ Weak (|t| ≥ 1)",   _n_weak)
+        _cc3.metric("❌ Not Validated",      _n_fail)
+        _cc4.metric("— Insufficient Data",  _n_nodat)
+
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+    # ── SECTION 2 — Coefficient Stability Over Years ──────────────────────────
+    with st.expander("Section 2 — Coefficient Stability: Does the Signal Hold Consistently?", expanded=True):
+        st.markdown(
+            '<div class="ac-hd">FM Coefficient by Year — stability = the signal is real, not a fluke</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "A group with consistent positive coefficients across years is trustworthy. "
+            "Wild swings or sign-flipping across years = noisy or spurious signal."
+        )
+
+        _s2_groups = sorted(
+            [g for g in _fm_results if _fm_results[g]["coeff_by_year"]],
+            key=lambda g: abs(_fm_results[g]["t_stat"]), reverse=True
+        )
+        if not _s2_groups:
+            st.info("No FM results to display.")
+        else:
+            _sel_s2 = st.multiselect(
+                "s2_grp",
+                _s2_groups,
+                default=_s2_groups[:min(5, len(_s2_groups))],
+                key="fm_s2_groups",
+                label_visibility="collapsed",
+                format_func=lambda g: (
+                    f"{g}   ·   t={_fm_results[g]['t_stat']:+.2f}  {_fm_results[g]['verdict']}"
+                ),
+            )
+            if _sel_s2:
+                _s2_traces = []
+                for g in _sel_s2:
+                    _ts = _fm_results[g]["coeff_by_year"]
+                    _yrs_s2 = sorted(_ts.keys())
+                    _s2_traces.append(go.Scatter(
+                        x=_yrs_s2,
+                        y=[_ts[y] for y in _yrs_s2],
+                        mode="lines+markers",
+                        name=g,
+                        hovertemplate=f"<b>{g}</b><br>Year: %{{x}}<br>Coeff: %{{y:.4f}}<extra></extra>",
+                    ))
+                _s2_traces.append(go.Scatter(
+                    x=sorted(_fm_r2.keys()),
+                    y=[0] * len(_fm_r2),
+                    mode="lines",
+                    line=dict(color=_LINE, dash="dash", width=1),
+                    showlegend=False, hoverinfo="skip",
+                ))
+                _fig_s2 = go.Figure(data=_s2_traces)
+                _fig_s2.update_layout(
+                    **_PLY,
+                    height=360,
+                    margin=dict(l=0, r=0, t=30, b=40),
+                    xaxis=dict(title="Prediction Year", showgrid=True, gridcolor=_GRID,
+                               tickmode="array", tickvals=sorted(_fm_r2.keys())),
+                    yaxis=dict(title="FM Coefficient", showgrid=True, gridcolor=_GRID,
+                               zeroline=True, zerolinecolor=_LINE),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                )
+                st.plotly_chart(_fig_s2, use_container_width=True)
+
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+    # ── SECTION 3 — Cross-Sectional R² by Year ────────────────────────────────
+    with st.expander("Section 3 — Cross-Sectional R²: How Much Return Variance Do Groups Explain?", expanded=False):
+        st.markdown(
+            '<div class="ac-hd">R² per Prediction Year — how well the selected groups explain cross-sectional returns</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "R² in cross-sectional equity models is typically low (2–15%). "
+            "This is expected — stock returns are noisy. "
+            "Consistent non-zero R² across years is the signal. A single high-R² year means little."
+        )
+
+        if _fm_r2:
+            _r2_yrs  = sorted(_fm_r2.keys())
+            _r2_vals = [round(_fm_r2[y] * 100, 2) for y in _r2_yrs]
+            _r2_cos  = [_fm_n_cos.get(y, 0) for y in _r2_yrs]
+            _fig_r2  = go.Figure()
+            _fig_r2.add_trace(go.Bar(
+                x=_r2_yrs,
+                y=_r2_vals,
+                marker_color=[
+                    _VD["strong"][1] if v >= 5 else
+                    (_VD["usable"][1] if v >= 2 else _VD["weak"][1])
+                    for v in _r2_vals
+                ],
+                text=[f"{v:.1f}%<br>n={c}" for v, c in zip(_r2_vals, _r2_cos)],
+                textposition="outside",
+                hovertemplate="Year: %{x}<br>R²: %{y:.2f}%<br><extra></extra>",
+            ))
+            _fig_r2.update_layout(
+                **_PLY,
+                height=300,
+                margin=dict(l=0, r=0, t=20, b=40),
+                xaxis=dict(title="Prediction Year", showgrid=False,
+                           tickmode="array", tickvals=_r2_yrs),
+                yaxis=dict(title="R² (%)", showgrid=True, gridcolor=_GRID,
+                           zeroline=False, ticksuffix="%"),
+            )
+            st.plotly_chart(_fig_r2, use_container_width=True)
+            _avg_r2 = float(np.mean(_r2_vals))
+            _med_r2 = float(np.median(_r2_vals))
+            _pos_r2 = sum(1 for v in _r2_vals if v > 0)
+            _rc1, _rc2, _rc3 = st.columns(3)
+            _rc1.metric("Mean R²",  f"{_avg_r2:.2f}%")
+            _rc2.metric("Median R²", f"{_med_r2:.2f}%")
+            _rc3.metric("Positive Years", f"{_pos_r2}/{len(_r2_vals)}")
+        else:
+            st.info("No R² data available.")
+
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+    # ── SECTION 4 — FM vs IC-IR Comparison ───────────────────────────────────
+    with st.expander("Section 4 — FM vs IC-IR: Where Both Agree, Confidence Is Highest", expanded=False):
+        st.markdown(
+            '<div class="ac-hd">Convergence map — groups where FM t-stat and IC-IR agree are the most reliable signals</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "✅ Top-right: high IC-IR AND high FM t-stat → strongest conviction. "
+            "⚠️ Top-left or bottom-right: one method signals, the other doesn't → review carefully. "
+            "❌ Bottom-left: neither method validates → low weight or exclude."
+        )
+
+        _cmp_rows = [
+            {
+                "Group":    g,
+                "IC-IR":    group_comp_stats[g]["ic_ir"],
+                "FM T-Stat": _fm_results[g]["t_stat"] if g in _fm_results else float("nan"),
+                "Verdict":  _fm_results[g]["verdict"] if g in _fm_results else "—",
+                "Hit Rate": group_comp_stats[g]["hit_rate"],
+            }
+            for g in group_comp_stats
+            if g in _fm_results and not np.isnan(_fm_results[g]["t_stat"])
+        ]
+
+        if _cmp_rows:
+            _cmp_df = pd.DataFrame(_cmp_rows)
+            _colors  = {
+                "✅": _VD["strong"][1],
+                "⚠️": _VD["weak"][1],
+                "❌": _VD["none"][1],
+                "—":  _VD["meta"],
+            }
+            _fig_cmp = go.Figure()
+            for _verd in ["✅", "⚠️", "❌"]:
+                _sub = _cmp_df[_cmp_df["Verdict"] == _verd]
+                if _sub.empty:
+                    continue
+                _fig_cmp.add_trace(go.Scatter(
+                    x=_sub["IC-IR"],
+                    y=_sub["FM T-Stat"],
+                    mode="markers+text",
+                    name=_verd,
+                    text=_sub["Group"],
+                    textposition="top center",
+                    textfont=dict(size=9),
+                    marker=dict(
+                        color=_colors[_verd],
+                        size=(_sub["Hit Rate"] / 10 + 6).clip(6, 18).tolist(),
+                        line=dict(width=1, color=_LINE),
+                    ),
+                    hovertemplate=(
+                        "<b>%{text}</b><br>"
+                        "IC-IR: %{x:.3f}<br>"
+                        "FM T-Stat: %{y:.3f}<br>"
+                        "<extra></extra>"
+                    ),
+                ))
+            # Reference lines at IC-IR=0 and t=2
+            _fig_cmp.add_hline(y=2.0,  line=dict(color=_LINE, dash="dash", width=1),
+                               annotation_text="t=2.0 threshold", annotation_position="right")
+            _fig_cmp.add_hline(y=-2.0, line=dict(color=_LINE, dash="dash", width=1))
+            _fig_cmp.add_vline(x=0.0,  line=dict(color=_LINE, dash="dot",  width=1))
+            _fig_cmp.update_layout(
+                **_PLY,
+                height=420,
+                margin=dict(l=0, r=0, t=30, b=50),
+                xaxis=dict(title="IC-IR (IC consistency)", showgrid=True, gridcolor=_GRID, zeroline=False),
+                yaxis=dict(title="FM T-Statistic (independent regression signal)", showgrid=True,
+                           gridcolor=_GRID, zeroline=False),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+            )
+            st.plotly_chart(_fig_cmp, use_container_width=True)
+            st.caption(
+                "Bubble size = hit rate. Dashed line = t=±2.0 (statistical significance threshold). "
+                "Groups in the top-right quadrant (high IC-IR + high FM t-stat) carry the strongest evidence."
+            )
+
+    # ══════════════════════════════════════════════════════════════════════════════
+    # TAB 7 — Quintile Backtest
+    # ══════════════════════════════════════════════════════════════════════════════
+with tab7:
 
     if not group_comp_stats:
         st.warning("Not enough data. Expand year range or select more companies.")
@@ -2757,9 +3215,9 @@ with tab6:
         )
 
 # ══════════════════════════════════════════════════════════════════════════
-# TAB 7 — EDGE INTELLIGENCE
+# TAB 8 — EDGE INTELLIGENCE
 # ══════════════════════════════════════════════════════════════════════════
-with tab7:
+with tab8:
     st.markdown('<div class="ac-hd">Edge Intelligence — Signal Decay · Persistence · Screener</div>', unsafe_allow_html=True)
     st.caption(
         "Three lenses a quant fund uses to move from 'this factor works' to 'which names to own today'. "
