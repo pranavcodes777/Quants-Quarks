@@ -17,7 +17,6 @@ from scipy.spatial.distance import squareform
 from scipy.stats import linregress as _linregress
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "Ingest"))
-from factor_builder import SECTORS
 
 _DB_PATH = os.path.join(os.path.dirname(__file__), "..", "Database", "bs_factors.parquet")
 
@@ -870,7 +869,8 @@ with st.sidebar:
         st.rerun()
     st.divider()
 
-    sector = st.selectbox("Sector", list(SECTORS.keys()))
+    _all_sectors = sorted(_load_all(_parquet_hash())["Sector"].unique())
+    sector = st.selectbox("Sector", _all_sectors)
 
     df_raw = load_data(sector)
     if df_raw.empty:
@@ -3746,7 +3746,7 @@ with tab8:
         def _build_broad_portfolio(file_hash: str, yr_lo: int, yr_hi: int, thr: float, meth: str):
             all_df = _load_all(file_hash)
             rows = []
-            for sec in SECTORS:
+            for sec in sorted(all_df["Sector"].unique()):
                 df_s = all_df[all_df["Sector"] == sec].copy()
                 df_fwd_s = df_s[df_s["Return_1Y_Fwd"].notna()].copy()
                 if df_fwd_s.empty:
